@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-*sa2bb&922p(l)kkrnx$@dv)zkt)^nry#)vk851suuom8i5_4w
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [*]
 
 
 # lanfiatech/settings.py
