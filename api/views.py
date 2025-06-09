@@ -152,7 +152,6 @@ class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = ProductVariant.objects.select_related('product', 'format')
     serializer_class = ProductVariantSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    
 class OrderListCreateView(generics.ListCreateAPIView):
     queryset = Order.objects.select_related('point_of_sale')
     serializer_class = OrderSerializer
