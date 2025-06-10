@@ -140,7 +140,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 STATIC_URL = 'static/'
 
 from datetime import timedelta
-CORS_ALLOWED_ORIGINS =['http://localhost:3000']
+CORS_ALLOWED_ORIGINS =['http://localhost:3000/']
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
