@@ -42,10 +42,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'api',
     'django_filters',
+    'corsheaders',  # Add this
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Add this
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -140,7 +142,29 @@ MEDIA_ROOT = BASE_DIR / 'media'
 STATIC_URL = 'static/'
 
 from datetime import timedelta
-CORS_ALLOWED_ORIGINS =['http://localhost:3000/']
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS =['http://localhost:3000/','http://localhost:3000']
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
