@@ -129,7 +129,7 @@ class UserProfile(models.Model):
     phone = models.CharField(max_length=20, blank=True, null=True)
     location = models.CharField(max_length=200, blank=True, null=True)
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, related_name='users')
-    join_date = models.DateField()
+    join_date = models.DateField(auto_now_add=True)
     last_login = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)

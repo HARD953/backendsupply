@@ -61,6 +61,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['user', 'phone', 'location', 'role', 'join_date', 'last_login', 'status', 'avatar']
+        extra_kwargs = {
+            'join_date': {'read_only': True},  # Rendre join_date en lecture seule
+        }
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
