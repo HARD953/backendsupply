@@ -96,7 +96,7 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 #     }
 # }
 
-DATABASE_URL = config('DATABASE_URL', default='postgresql://dbsupply_user:RYvLH7DVg161kkPFJ7ZISD7ai7flP8yp@dpg-d12uvsje5dus73cqu2cg-a.oregon-postgres.render.com/dbsupply')
+DATABASE_URL = config('DATABASE_URL', default='postgresql://dbchain_3sx9_user:w2KLey75pdAlXG910cHmFYHAoMff1dfL@dpg-d1s0en95pdvs739p1um0-a.oregon-postgres.render.com/dbchain_3sx9')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL),  # Utilisez dj-database-url pour parser l'URL
 }

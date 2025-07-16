@@ -23,6 +23,7 @@ class Supplier(models.Model):
     Modèle pour les fournisseurs (ex. Importateur Adjamé, Huilerie Locale).
     """
     name = models.CharField(max_length=200)
+    types = models.CharField(max_length=200)
     contact = models.CharField(max_length=100, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
