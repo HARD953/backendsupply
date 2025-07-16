@@ -219,6 +219,17 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import permissions
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Count, Sum, Q
+from django.db.models.functions import Coalesce
+from decimal import Decimal
+from .models import PointOfSale, Order, User, ProductVariant, StockMovement, Notification
+from .serializers import DashboardSerializer
+
 class DashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -228,12 +239,148 @@ class DashboardView(APIView):
         this_month = today.replace(day=1)
         last_month = (this_month - timedelta(days=1)).replace(day=1)
 
-        # Calcul des statistiques (adapté si nécessaire)
+        # Calculate statistics for the dashboard
+        # Points of Sale
         pos_count = PointOfSale.objects.count()
-        # ... (le reste de la méthode reste inchangé)
+        pos_count_yesterday = PointOfSale.objects.filter(
+            created_at__date__lte=yesterday
+        ).count()
+        pos_change = (
+            f"+{((pos_count - pos_count_yesterday) / pos_count_yesterday * 100):.1f}%"
+            if pos_count_yesterday > 0 else "0%"
+        )
+
+        # Daily Orders
+        orders_today = Order.objects.filter(date=today).count()
+        orders_yesterday = Order.objects.filter(date=yesterday).count()
+        orders_change = (
+            f"+{((orders_today - orders_yesterday) / orders_yesterday * 100):.1f}%"
+            if orders_yesterday > 0 else "0%"
+        )
+
+        # Monthly Revenue
+        revenue_this_month = Order.objects.filter(
+            date__gte=this_month
+        ).aggregate(total=Coalesce(Sum('total'), Decimal('0')))['total']
+        revenue_last_month = Order.objects.filter(
+            date__gte=last_month, date__lt=this_month
+        ).aggregate(total=Coalesce(Sum('total'), Decimal('0')))['total']
+        revenue_change = (
+            f"+{((revenue_this_month - revenue_last_month) / revenue_last_month * 100):.1f}%"
+            if revenue_last_month > 0 else "0%"
+        )
+
+        # Active Users
+        active_users = UserProfile.objects.filter(status='active').count()
+        active_users_yesterday = UserProfile.objects.filter(
+            status='active', last_login__date__lte=yesterday
+        ).count()
+        users_change = (
+            f"+{((active_users - active_users_yesterday) / active_users_yesterday * 100):.1f}%"
+            if active_users_yesterday > 0 else "0%"
+        )
+
+        # Recent Activities (based on Stock Movements and Orders)
+        recent_movements = StockMovement.objects.select_related(
+            'product_variant__product', 'user'
+        ).order_by('-created_at')[:5]
+        recent_orders = Order.objects.select_related('point_of_sale').order_by('-created_at')[:5]
+        
+        recent_activities = []
+        for movement in recent_movements:
+            recent_activities.append({
+                'action': f"{movement.type.capitalize()} de stock pour {movement.product_variant.product.name}",
+                'user': movement.user.username if movement.user else 'Système',
+                'time': (timezone.now() - movement.created_at).total_seconds() // 60,  # Time in minutes
+                'icon': 'Package',
+                'color': 'bg-orange-100'
+            })
+        for order in recent_orders:
+            recent_activities.append({
+                'action': f"Commande {order.id} créée",
+                'user': order.customer_name,
+                'time': (timezone.now() - order.created_at).total_seconds() // 60,  # Time in minutes
+                'icon': 'ShoppingCart',
+                'color': 'bg-purple-100'
+            })
+        # Sort activities by time and limit to 5
+        recent_activities = sorted(recent_activities, key=lambda x: x['time'])[:5]
+        recent_activities = [
+            {
+                **activity,
+                'time': self.format_time_ago(activity['time'])
+            } for activity in recent_activities
+        ]
+
+        # Alerts (based on low stock and pending disputes)
+        low_stock_alerts = ProductVariant.objects.filter(
+            Q(current_stock=0) | Q(current_stock__lte=F('min_stock'))
+        ).select_related('product')[:3]
+        pending_disputes = Dispute.objects.filter(status='en_attente')[:3]
+
+        alerts = []
+        for variant in low_stock_alerts:
+            alerts.append({
+                'type': 'Stock Faible',
+                'message': f"Le stock de {variant.product.name} ({variant.format.name if variant.format else 'Sans format'}) est faible: {variant.current_stock} unités",
+                'priority': 'high' if variant.current_stock == 0 else 'medium',
+                'icon': 'Package'
+            })
+        for dispute in pending_disputes:
+            alerts.append({
+                'type': 'Contentieux',
+                'message': f"Nouveau contentieux pour la commande {dispute.order.id if dispute.order else 'N/A'}",
+                'priority': 'high',
+                'icon': 'AlertTriangle'
+            })
+
+        # Structure data to match frontend expectations
+        data = {
+            'stats': [
+                {
+                    'title': 'Points de Vente',
+                    'value': str(pos_count),
+                    'change': pos_change,
+                    'color': 'bg-blue-100 border-blue-200',
+                    'icon': 'MapPin'
+                },
+                {
+                    'title': 'Commandes du Jour',
+                    'value': str(orders_today),
+                    'change': orders_change,
+                    'color': 'bg-green-100 border-green-200',
+                    'icon': 'ShoppingCart'
+                },
+                {
+                    'title': 'Revenus Mensuels',
+                    'value': f"₣ {revenue_this_month:,.2f}",
+                    'change': revenue_change,
+                    'color': 'bg-purple-100 border-purple-200',
+                    'icon': 'Coins'
+                },
+                {
+                    'title': 'Utilisateurs Actifs',
+                    'value': str(active_users),
+                    'change': users_change,
+                    'color': 'bg-orange-100 border-orange-200',
+                    'icon': 'Users'
+                }
+            ],
+            'recent_activities': recent_activities,
+            'alerts': alerts
+        }
 
         serializer = DashboardSerializer(data)
         return Response(serializer.data)
+
+    def format_time_ago(self, minutes):
+        if minutes < 60:
+            return f"{int(minutes)} min"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{int(hours)}h"
+        days = hours // 24
+        return f"{int(days)}j"
 
 class StockOverviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]

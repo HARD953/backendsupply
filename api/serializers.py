@@ -269,9 +269,21 @@ class NotificationSerializer(serializers.ModelSerializer):
         ]
 
 class DashboardSerializer(serializers.Serializer):
-    stats = serializers.DictField(child=serializers.DictField())
-    recent_activities = serializers.ListField(child=serializers.DictField())
-    alerts = serializers.ListField(child=serializers.DictField())
+    stats = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.CharField(allow_blank=True)
+        )
+    )
+    recent_activities = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.CharField(allow_blank=True)
+        )
+    )
+    alerts = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.CharField(allow_blank=True)
+        )
+    )
 
 class StockOverviewSerializer(serializers.Serializer):
     total_products = serializers.IntegerField()
