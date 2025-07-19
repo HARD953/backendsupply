@@ -134,7 +134,7 @@ class UserProfile(models.Model):
     last_login = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
-
+    points_of_sale = models.ManyToManyField(PointOfSale, related_name='users', blank=True)
     def __str__(self):
         return f"{self.user.username} ({self.role.name if self.role else 'No Role'})"
 

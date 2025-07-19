@@ -268,8 +268,11 @@ class NotificationSerializer(serializers.ModelSerializer):
             'created_at'
         ]
 
+from rest_framework import serializers
 
-class DashboardSerializer(serializers.Serializer):
+class PosDashboardSerializer(serializers.Serializer):
+    pos_id = serializers.UUIDField(allow_null=True)  # Allow null for cumulative
+    pos_name = serializers.CharField()
     stats = serializers.ListField(
         child=serializers.DictField(
             child=serializers.CharField(allow_blank=True)
@@ -286,9 +289,23 @@ class DashboardSerializer(serializers.Serializer):
         )
     )
 
-class StockOverviewSerializer(serializers.Serializer):
+class DashboardSerializer(serializers.Serializer):
+    cumulative = PosDashboardSerializer()
+    pos_data = serializers.ListField(child=PosDashboardSerializer())
+
+class PosStockOverviewSerializer(serializers.Serializer):
+    pos_id = serializers.UUIDField(allow_null=True)  # Allow null for cumulative
+    pos_name = serializers.CharField()
     total_products = serializers.IntegerField()
-    stock_value = serializers.DecimalField(max_digits=12, decimal_places=2)
+    stock_value = serializers.FloatField()
     alert_count = serializers.IntegerField()
     today_movements = serializers.IntegerField()
-    critical_products = ProductSerializer(many=True)
+    critical_products = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.CharField(allow_blank=True)
+        )
+    )
+
+class StockOverviewSerializer(serializers.Serializer):
+    cumulative = PosStockOverviewSerializer()
+    pos_data = serializers.ListField(child=PosStockOverviewSerializer())
