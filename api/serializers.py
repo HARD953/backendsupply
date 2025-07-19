@@ -268,6 +268,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             'created_at'
         ]
 
+
 class DashboardSerializer(serializers.Serializer):
     stats = serializers.ListField(
         child=serializers.DictField(

@@ -14,7 +14,7 @@ from pathlib import Path
 from decouple import config  # Pour gérer les variables d'environnement
 import dj_database_url  # Importez dj-database-url
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -58,9 +58,9 @@ MIDDLEWARE = [
 
 # Configuration de l'authentification (optionnel, si tu utilises JWT)
 REST_FRAMEWORK = {
-    # 'DEFAULT_AUTHENTICATION_CLASSES': [
-    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
-    # ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
