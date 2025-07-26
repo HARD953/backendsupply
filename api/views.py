@@ -83,36 +83,130 @@ class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 class UserProfileListCreateView(generics.ListCreateAPIView):
-    queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['role', 'status']
-    search_fields = ['user__username', 'user__email', 'phone']
+    filterset_fields = {
+        'role': ['exact'],
+        'status': ['exact'],
+        'points_of_sale': ['exact'],
+        'establishment_type': ['exact'],
+        'establishment_registration_date': ['gte', 'lte'],
+    }
+    search_fields = [
+        'user__username', 
+        'user__email', 
+        'phone',
+        'establishment_name',
+        'establishment_address'
+    ]
+
+    def get_queryset(self):
+        user_profile = self.request.user.profile
+        queryset = UserProfile.objects.filter(
+            points_of_sale__in=user_profile.points_of_sale.all(),
+            establishment_name=user_profile.establishment_name
+        ).select_related(
+            'user', 'role'
+        ).prefetch_related(
+            'points_of_sale'
+        ).distinct()
+        
+        return queryset
+
+    def perform_create(self, serializer):
+        if serializer.is_valid():
+            # On force l'établissement à être le même que celui de l'utilisateur connecté
+            serializer.validated_data['establishment_name'] = self.request.user.profile.establishment_name
+            profile = serializer.save()
+            
+            # On lie automatiquement les POS de l'utilisateur connecté
+            if not profile.points_of_sale.exists():
+                profile.points_of_sale.set(self.request.user.profile.points_of_sale.all())
 
 class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        user_profile = self.request.user.profile
+        return UserProfile.objects.filter(
+            points_of_sale__in=user_profile.points_of_sale.all(),
+            establishment_name=user_profile.establishment_name
+        ).select_related(
+            'user', 'role'
+        ).prefetch_related(
+            'points_of_sale'
+        )
+
+    def perform_update(self, serializer):
+        # On empêche la modification de l'établissement
+        if 'establishment_name' in serializer.validated_data:
+            serializer.validated_data.pop('establishment_name')
+            
+        instance = serializer.save()
+        
+        # Mise à jour automatique du POS principal si nécessaire
+        if (instance.points_of_sale.count() == 1 and 
+            instance.establishment_name and 
+            instance.establishment_name != instance.points_of_sale.first().name):
+            pos = instance.points_of_sale.first()
+            pos.name = instance.establishment_name
+            pos.phone = instance.establishment_phone
+            pos.email = instance.establishment_email
+            pos.address = instance.establishment_address
+            pos.type = instance.establishment_type
+            pos.save()
+
 class ProductListCreateView(generics.ListCreateAPIView):
-    queryset = Product.objects.select_related('category', 'supplier', 'point_of_sale')
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['category', 'point_of_sale', 'status']
+    filterset_fields = ['category', 'status']
     search_fields = ['name', 'sku']
 
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return Product.objects.filter(
+            point_of_sale__in=user_pos
+        ).select_related('category', 'supplier', 'point_of_sale')
+
+    def perform_create(self, serializer):
+        # Vérifier que le POS assigné fait partie de ceux de l'utilisateur
+        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
+        if point_of_sale_id:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(point_of_sale_id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
+                )
+        serializer.save()
+
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Product.objects.select_related('category', 'supplier', 'point_of_sale')
     serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return Product.objects.filter(
+            point_of_sale__in=user_pos
+        ).select_related('category', 'supplier', 'point_of_sale')
+
+    def perform_update(self, serializer):
+        # Vérifier que le nouveau POS fait partie de ceux de l'utilisateur
+        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
+        if point_of_sale_id:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(point_of_sale_id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
+                )
+        serializer.save()
 
 class StockMovementListCreateView(generics.ListCreateAPIView):
-    queryset = StockMovement.objects.select_related(
-        'product_variant__product',
-        'user'
-    ).order_by('-date')
     serializer_class = StockMovementSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
@@ -125,48 +219,144 @@ class StockMovementListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['date', 'created_at']
     ordering = ['-date']
 
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return StockMovement.objects.filter(
+            product_variant__product__point_of_sale__in=user_pos
+        ).select_related('product_variant__product', 'user').order_by('-date')
+
     def perform_create(self, serializer):
+        # Vérifier que le produit fait partie d'un POS accessible
+        product_variant = serializer.validated_data.get('product_variant')
+        user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+        
+        if str(product_variant.product.point_of_sale.id) not in user_pos_ids:
+            raise serializers.ValidationError(
+                {"product_variant": "Vous n'avez pas accès à ce produit"}
+            )
+        
         serializer.save(user=self.request.user)
 
 class StockMovementDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = StockMovement.objects.select_related(
-        'product_variant__product',
-        'user'
-    )
     serializer_class = StockMovementSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
 
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return StockMovement.objects.filter(
+            product_variant__product__point_of_sale__in=user_pos
+        ).select_related('product_variant__product', 'user')
+
     def perform_update(self, serializer):
+        # Vérifier que le nouveau produit fait partie d'un POS accessible
+        product_variant = serializer.validated_data.get('product_variant')
+        if product_variant:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(product_variant.product.point_of_sale.id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"product_variant": "Vous n'avez pas accès à ce produit"}
+                )
         serializer.save(user=self.request.user)
 
 class ProductVariantListCreateView(generics.ListCreateAPIView):
-    queryset = ProductVariant.objects.select_related('product', 'format')
     serializer_class = ProductVariantSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['product', 'format']
+    filterset_fields = ['format']
     search_fields = ['barcode']
 
-class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = ProductVariant.objects.select_related('product', 'format')
-    serializer_class = ProductVariantSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-class OrderListCreateView(generics.ListCreateAPIView):
-    queryset = Order.objects.select_related('point_of_sale')
-    serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['point_of_sale', 'status', 'priority']
-    search_fields = ['customer_name', 'customer_email']
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return ProductVariant.objects.filter(
+            product__point_of_sale__in=user_pos
+        ).select_related('product', 'format')
 
     def perform_create(self, serializer):
+        # Vérifier que le produit parent fait partie d'un POS accessible
+        product = serializer.validated_data.get('product')
+        user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+        
+        if str(product.point_of_sale.id) not in user_pos_ids:
+            raise serializers.ValidationError(
+                {"product": "Vous n'avez pas accès à ce produit"}
+            )
+        
+        serializer.save()
+
+class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductVariantSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return ProductVariant.objects.filter(
+            product__point_of_sale__in=user_pos
+        ).select_related('product', 'format')
+
+    def perform_update(self, serializer):
+        # Vérifier que le nouveau produit parent fait partie d'un POS accessible
+        product = serializer.validated_data.get('product')
+        if product:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(product.point_of_sale.id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"product": "Vous n'avez pas accès à ce produit"}
+                )
+        serializer.save()
+
+class OrderListCreateView(generics.ListCreateAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['status', 'priority']
+    search_fields = ['customer_name', 'customer_email']
+
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return Order.objects.filter(
+            point_of_sale__in=user_pos
+        ).select_related('point_of_sale')
+
+    def perform_create(self, serializer):
+        # Vérifier que le POS fait partie de ceux de l'utilisateur
+        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
+        if point_of_sale_id:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(point_of_sale_id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
+                )
         serializer.save()
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Order.objects.select_related('point_of_sale')
     serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        # Récupérer les POS de l'utilisateur connecté
+        user_pos = self.request.user.profile.points_of_sale.all()
+        return Order.objects.filter(
+            point_of_sale__in=user_pos
+        ).select_related('point_of_sale')
+
+    def perform_update(self, serializer):
+        # Vérifier que le nouveau POS fait partie de ceux de l'utilisateur
+        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
+        if point_of_sale_id:
+            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
+            if str(point_of_sale_id) not in user_pos_ids:
+                raise serializers.ValidationError(
+                    {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
+                )
+        serializer.save()
 
 class DisputeListCreateView(generics.ListCreateAPIView):
     queryset = Dispute.objects.select_related('order', 'complainant')
@@ -218,222 +408,6 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
     queryset = Notification.objects.select_related('user', 'related_order', 'related_product')
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
-
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import permissions, status
-# from django.utils import timezone
-# from datetime import timedelta
-# from django.db.models import Count, Sum, Q
-# from django.db.models.functions import Coalesce
-# from decimal import Decimal
-# from .models import PointOfSale, Order, UserProfile, ProductVariant, StockMovement, Notification
-# from .serializers import DashboardSerializer
-
-# class DashboardView(APIView):
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def get(self, request):
-#         try:
-#             today = timezone.now().date()
-#             yesterday = today - timedelta(days=1)
-#             this_month = today.replace(day=1)
-#             last_month = (this_month - timedelta(days=1)).replace(day=1)
-
-#             # Calculate statistics
-#             # Points of Sale
-#             pos_count = PointOfSale.objects.count()
-#             pos_count_yesterday = PointOfSale.objects.filter(
-#                 created_at__date__lte=yesterday
-#             ).count()
-#             pos_change = (
-#                 f"+{((pos_count - pos_count_yesterday) / pos_count_yesterday * 100):.1f}%"
-#                 if pos_count_yesterday > 0 else "0%"
-#             )
-
-#             # Daily Orders
-#             orders_today = Order.objects.filter(date=today).count()
-#             orders_yesterday = Order.objects.filter(date=yesterday).count()
-#             orders_change = (
-#                 f"+{((orders_today - orders_yesterday) / orders_yesterday * 100):.1f}%"
-#                 if orders_yesterday > 0 else "0%"
-#             )
-
-#             # Monthly Revenue
-#             revenue_this_month = Order.objects.filter(
-#                 date__gte=this_month
-#             ).aggregate(total=Coalesce(Sum('total'), Decimal('0')))['total']
-#             revenue_last_month = Order.objects.filter(
-#                 date__gte=last_month, date__lt=this_month
-#             ).aggregate(total=Coalesce(Sum('total'), Decimal('0')))['total']
-#             revenue_change = (
-#                 f"+{((revenue_this_month - revenue_last_month) / revenue_last_month * 100):.1f}%"
-#                 if revenue_last_month > 0 else "0%"
-#             )
-
-#             # Active Users
-#             active_users = UserProfile.objects.filter(status='active').count()
-#             active_users_yesterday = UserProfile.objects.filter(
-#                 status='active', last_login__date__lte=yesterday
-#             ).count()
-#             users_change = (
-#                 f"+{((active_users - active_users_yesterday) / active_users_yesterday * 100):.1f}%"
-#                 if active_users_yesterday > 0 else "0%"
-#             )
-
-#             # Recent Activities
-#             recent_movements = StockMovement.objects.select_related(
-#                 'product_variant__product', 'user'
-#             ).order_by('-created_at')[:5]
-#             recent_orders = Order.objects.select_related('point_of_sale').order_by('-created_at')[:5]
-            
-#             recent_activities = []
-#             for movement in recent_movements:
-#                 recent_activities.append({
-#                     'action': f"{movement.type.capitalize()} de stock pour {movement.product_variant.product.name}",
-#                     'user': movement.user.username if movement.user else 'Système',
-#                     'time': (timezone.now() - movement.created_at).total_seconds() // 60,
-#                     'icon': 'Package',
-#                     'color': 'bg-orange-100'
-#                 })
-#             for order in recent_orders:
-#                 recent_activities.append({
-#                     'action': f"Commande {order.id} créée",
-#                     'user': order.customer_name,
-#                     'time': (timezone.now() - order.created_at).total_seconds() // 60,
-#                     'icon': 'ShoppingCart',
-#                     'color': 'bg-purple-100'
-#                 })
-#             recent_activities = sorted(recent_activities, key=lambda x: x['time'])[:5]
-#             recent_activities = [
-#                 {
-#                     **activity,
-#                     'time': self.format_time_ago(activity['time'])
-#                 } for activity in recent_activities
-#             ]
-
-#             # Alerts (using Notification model)
-#             notifications = Notification.objects.filter(
-#                 is_read=False,
-#                 user=request.user
-#             ).select_related('related_order', 'related_product').order_by('-created_at')[:5]
-
-#             alerts = []
-#             for notification in notifications:
-#                 priority = (
-#                     'high' if notification.type in ['stock_alert', 'dispute'] else
-#                     'medium' if notification.type in ['order_update', 'promotion'] else
-#                     'low'
-#                 )
-#                 icon = (
-#                     'Package' if notification.type == 'stock_alert' else
-#                     'ShoppingCart' if notification.type == 'order_update' else
-#                     'AlertTriangle' if notification.type == 'dispute' else
-#                     'Bell'  # Default for 'promotion' and 'general'
-#                 )
-#                 alerts.append({
-#                     'type': dict(notification.TYPE_CHOICES).get(notification.type, notification.type),
-#                     'message': notification.message,
-#                     'priority': priority,
-#                     'icon': icon
-#                 })
-
-#             # Structure data
-#             data = {
-#                 'stats': [
-#                     {
-#                         'title': 'Points de Vente',
-#                         'value': str(pos_count),
-#                         'change': pos_change,
-#                         'color': 'bg-blue-100 border-blue-200',
-#                         'icon': 'MapPin'
-#                     },
-#                     {
-#                         'title': 'Commandes du Jour',
-#                         'value': str(orders_today),
-#                         'change': orders_change,
-#                         'color': 'bg-green-100 border-green-200',
-#                         'icon': 'ShoppingCart'
-#                     },
-#                     {
-#                         'title': 'Revenus Mensuels',
-#                         'value': f"₣ {revenue_this_month:,.2f}",
-#                         'change': revenue_change,
-#                         'color': 'bg-purple-100 border-purple-200',
-#                         'icon': 'Coins'
-#                     },
-#                     {
-#                         'title': 'Utilisateurs Actifs',
-#                         'value': str(active_users),
-#                         'change': users_change,
-#                         'color': 'bg-orange-100 border-orange-200',
-#                         'icon': 'Users'
-#                     }
-#                 ],
-#                 'recent_activities': recent_activities,
-#                 'alerts': alerts
-#             }
-
-#             # Initialize and validate serializer
-#             serializer = DashboardSerializer(data=data)
-#             serializer.is_valid(raise_exception=True)
-#             return Response(serializer.data, status=status.HTTP_200_OK)
-
-#         except Exception as e:
-#             return Response(
-#                 {"error": f"Erreur lors du chargement des données du tableau de bord: {str(e)}"},
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
-
-#     def format_time_ago(self, minutes):
-#         if minutes < 60:
-#             return f"{int(minutes)} min"
-#         hours = minutes // 60
-#         if hours < 24:
-#             return f"{int(hours)}h"
-#         days = hours // 24
-#         return f"{int(days)}j"
-
-# class StockOverviewView(APIView):
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def get(self, request):
-#         today = timezone.now().date()
-        
-#         # Total Products
-#         total_products = Product.objects.count()
-        
-#         # Stock Value - maintenant calculé sur ProductVariant
-#         stock_value = ProductVariant.objects.aggregate(
-#             total=Coalesce(Sum(F('current_stock') * F('price')), Decimal('0')
-#         )['total'])
-        
-#         # Alert Count - maintenant basé sur ProductVariant
-#         alert_count = ProductVariant.objects.filter(
-#             Q(current_stock=0) | Q(current_stock__lte=F('min_stock'))
-#         ).count()
-        
-#         # Today's Movements
-#         today_movements = StockMovement.objects.filter(date__date=today).count()
-        
-#         # Critical Products (variantes avec stock faible ou rupture)
-#         critical_variants = ProductVariant.objects.filter(
-#             Q(current_stock=0) | Q(current_stock__lte=F('min_stock'))
-#         ).select_related('product').order_by('current_stock')[:5]
-        
-#         data = {
-#             'total_products': total_products,
-#             'stock_value': stock_value,
-#             'alert_count': alert_count,
-#             'today_movements': today_movements,
-#             'critical_products': ProductSerializer(
-#                 [v.product for v in critical_variants], 
-#                 many=True
-#             ).data
-#         }
-        
-#         serializer = StockOverviewSerializer(data)
-#         return Response(serializer.data)
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -867,3 +841,74 @@ class StockOverviewView(APIView):
                 {"error": f"Erreur lors du chargement des données de stock: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import MobileVendor, VendorActivity, VendorPerformance
+from .serializers import (
+    MobileVendorSerializer,
+    VendorActivitySerializer,
+    VendorPerformanceSerializer,
+    MobileVendorDetailSerializer
+)
+
+
+class MobileVendorViewSet(viewsets.ModelViewSet):
+    queryset = MobileVendor.objects.select_related('point_of_sale').all()
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'point_of_sale', 'vehicle_type', 'is_approved']
+    search_fields = ['first_name', 'last_name', 'phone', 'email']
+    ordering_fields = ['performance', 'date_joined', 'last_name']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return MobileVendorDetailSerializer
+        return MobileVendorSerializer
+
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        vendor = self.get_object()
+        stats = {
+            'total_sales': vendor.average_daily_sales * 30,  # Estimation mensuelle
+            'active_days': VendorActivity.objects.filter(
+                vendor=vendor,
+                activity_type__in=['check_in', 'sale']
+            ).dates('timestamp', 'day').distinct().count(),
+            'current_performance': vendor.performance,
+            'last_month_performance': VendorPerformance.objects.filter(
+                vendor=vendor
+            ).order_by('-month').first().performance_score if VendorPerformance.objects.filter(vendor=vendor).exists() else 0
+        }
+        return Response(stats)
+
+    @action(detail=False, methods=['get'])
+    def by_pos(self, request):
+        pos_id = request.query_params.get('pos_id')
+        if not pos_id:
+            return Response(
+                {"error": "Le paramètre pos_id est requis"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        vendors = MobileVendor.objects.filter(point_of_sale_id=pos_id)
+        serializer = self.get_serializer(vendors, many=True)
+        return Response(serializer.data)
+
+class VendorActivityViewSet(viewsets.ModelViewSet):
+    queryset = VendorActivity.objects.select_related('vendor', 'related_order').all()
+    serializer_class = VendorActivitySerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['vendor', 'activity_type', 'related_order']
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
+
+class VendorPerformanceViewSet(viewsets.ModelViewSet):
+    queryset = VendorPerformance.objects.select_related('vendor').all()
+    serializer_class = VendorPerformanceSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['vendor', 'month']
+    ordering_fields = ['month', 'performance_score']
+    ordering = ['-month']

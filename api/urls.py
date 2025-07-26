@@ -16,6 +16,7 @@ from .views import (
     DashboardView, StockOverviewView,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 )
+from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet
 
 urlpatterns = [
     # Dashboard
@@ -79,6 +80,9 @@ urlpatterns = [
     # Notifications
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
     path('notifications/<uuid:pk>/', NotificationDetailView.as_view(), name='notification-detail'),
+
+    # Endpoint supplémentaire pour le dashboard
+    path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
 ]
 
 

@@ -53,40 +53,69 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         return user
+    
+class PointOfSaleNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PointOfSale
+        fields = ['id', 'name']
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer()
     role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), allow_null=True)
+    points_of_sale = PointOfSaleNameSerializer(many=True, read_only=True)
+    points_of_sale_ids = serializers.PrimaryKeyRelatedField(
+        queryset=PointOfSale.objects.all(),
+        source='points_of_sale',
+        many=True,
+        write_only=True,
+        required=False
+    )
 
     class Meta:
         model = UserProfile
-        fields = ['user', 'phone', 'location', 'role', 'join_date', 'last_login', 'status', 'avatar']
+        fields = [
+            'user', 'phone', 'location', 'role', 'join_date', 'last_login', 
+            'status', 'avatar', 'points_of_sale', 'points_of_sale_ids',
+            'establishment_name', 'establishment_phone', 'establishment_email',
+            'establishment_address', 'establishment_type', 'establishment_registration_date'
+        ]
         extra_kwargs = {
-            'join_date': {'read_only': True},  # Rendre join_date en lecture seule
+            'join_date': {'read_only': True},
+            'establishment_registration_date': {'read_only': True},
         }
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
         avatar = validated_data.pop('avatar', None)
+        points_of_sale = validated_data.pop('points_of_sale', [])
+        
         user = UserSerializer().create(user_data)
         profile = UserProfile.objects.create(user=user, avatar=avatar, **validated_data)
+        
+        if points_of_sale:
+            profile.points_of_sale.set(points_of_sale)
+        
         return profile
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', None)
         avatar = validated_data.pop('avatar', None)
+        points_of_sale = validated_data.pop('points_of_sale', None)
 
-        # Mise à jour de l'utilisateur
         if user_data:
             user_serializer = UserSerializer(instance.user, data=user_data, partial=True)
             if user_serializer.is_valid():
                 user_serializer.save()
 
-        # Mise à jour du profil
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        
         if avatar:
             instance.avatar = avatar
+        
+        if points_of_sale is not None:
+            instance.points_of_sale.set(points_of_sale)
+        
         instance.save()
         return instance
 
@@ -309,3 +338,71 @@ class PosStockOverviewSerializer(serializers.Serializer):
 class StockOverviewSerializer(serializers.Serializer):
     cumulative = PosStockOverviewSerializer()
     pos_data = serializers.ListField(child=PosStockOverviewSerializer())
+
+
+
+from .models import MobileVendor, VendorActivity, VendorPerformance
+from .models import PointOfSale
+
+class MobileVendorSerializer(serializers.ModelSerializer):
+    point_of_sale_name = serializers.CharField(source='point_of_sale.name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    vehicle_type_display = serializers.CharField(source='get_vehicle_type_display', read_only=True)
+    full_name = serializers.SerializerMethodField()
+    zones = serializers.JSONField()
+    
+    class Meta:
+        model = MobileVendor
+        fields = [
+            'id', 'first_name', 'last_name', 'full_name', 'phone', 'email', 
+            'photo', 'status', 'status_display', 'vehicle_type', 'vehicle_type_display',
+            'vehicle_id', 'zones', 'performance', 'average_daily_sales',
+            'point_of_sale', 'point_of_sale_name', 'date_joined', 'last_activity',
+            'is_approved', 'notes', 'created_at'
+        ]
+        extra_kwargs = {
+            'point_of_sale': {'required': True},
+            'phone': {'required': True}
+        }
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+    
+    def validate_zones(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Les zones doivent être une liste")
+        return value
+
+class VendorActivitySerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
+    activity_type_display = serializers.CharField(source='get_activity_type_display', read_only=True)
+    
+    class Meta:
+        model = VendorActivity
+        fields = [
+            'id', 'vendor', 'vendor_name', 'activity_type', 'activity_type_display',
+            'timestamp', 'location', 'notes', 'related_order', 'created_at'
+        ]
+
+class VendorPerformanceSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
+    month_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = VendorPerformance
+        fields = [
+            'id', 'vendor', 'vendor_name', 'month', 'month_formatted',
+            'total_sales', 'orders_completed', 'days_worked',
+            'distance_covered', 'performance_score', 'bonus_earned',
+            'notes', 'created_at', 'updated_at'
+        ]
+    
+    def get_month_formatted(self, obj):
+        return obj.month.strftime("%B %Y")
+
+class MobileVendorDetailSerializer(MobileVendorSerializer):
+    activities = VendorActivitySerializer(many=True, read_only=True)
+    performances = VendorPerformanceSerializer(many=True, read_only=True)
+    
+    class Meta(MobileVendorSerializer.Meta):
+        fields = MobileVendorSerializer.Meta.fields + ['activities', 'performances']

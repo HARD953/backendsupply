@@ -135,12 +135,66 @@ class UserProfile(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     points_of_sale = models.ManyToManyField(PointOfSale, related_name='users', blank=True)
+
+    # Informations directes de l'établissement
+    establishment_name = models.CharField(
+        max_length=200, 
+        verbose_name="Nom de l'établissement"
+    )
+    establishment_phone = models.CharField(
+        max_length=20, 
+        blank=True, 
+        null=True, 
+        verbose_name="Téléphone établissement"
+    )
+    establishment_email = models.EmailField(
+        blank=True, 
+        null=True, 
+        verbose_name="Email établissement"
+    )
+    establishment_address = models.TextField(
+        verbose_name="Adresse établissement"
+    )
+    establishment_type = models.CharField(
+        max_length=50, 
+        verbose_name="Type d'établissement"
+    )
+    establishment_registration_date = models.DateField(
+        verbose_name="Date d'enregistrement",
+        default=timezone.now
+    )
+
     def __str__(self):
-        return f"{self.user.username} ({self.role.name if self.role else 'No Role'})"
+        return f"{self.user.username} - {self.establishment_name}"
 
     class Meta:
         verbose_name = "Profil utilisateur"
         verbose_name_plural = "Profils utilisateurs"
+
+    def save(self, *args, **kwargs):
+        """Méthode pour synchroniser éventuellement avec un POS existant"""
+        super().save(*args, **kwargs)
+        
+        # Si on veut créer automatiquement un POS à partir des infos
+        if not self.points_of_sale.exists() and self.establishment_name:
+            pos = PointOfSale.objects.create(
+                name=self.establishment_name,
+                phone=self.establishment_phone,
+                email=self.establishment_email,
+                address=self.establishment_address,
+                type=self.establishment_type,
+                registration_date=self.establishment_registration_date,
+                # Vous pouvez ajouter d'autres champs nécessaires ici
+            )
+            self.points_of_sale.add(pos)
+    def __str__(self):
+        return f"{self.user.username} ({self.role.name if self.role else 'No Role'})"
+    
+    class Meta:
+        verbose_name = "Profil utilisateur"
+        verbose_name_plural = "Profils utilisateurs"
+
+
 
 class ProductFormat(models.Model):
     """
@@ -441,3 +495,149 @@ class Notification(models.Model):
     class Meta:
         verbose_name = "Notification"
         verbose_name_plural = "Notifications"
+
+
+
+from django.db import models
+from django.contrib.auth.models import User
+from django.utils import timezone
+import uuid
+
+class MobileVendor(models.Model):
+    """
+    Modèle pour les vendeurs ambulants liés aux points de vente
+    """
+    STATUS_CHOICES = [
+        ('actif', 'Actif'),
+        ('inactif', 'Inactif'),
+        ('en_conge', 'En congé'),
+        ('suspendu', 'Suspendu'),
+    ]
+    
+    VEHICLE_CHOICES = [
+        ('moto', 'Moto'),
+        ('tricycle', 'Tricycle'),
+        ('velo', 'Vélo'),
+        ('pied', 'À pied'),
+        ('autre', 'Autre'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='mobile_vendor', null=True, blank=True)
+    point_of_sale = models.ForeignKey(
+        'PointOfSale', 
+        on_delete=models.CASCADE, 
+        related_name='mobile_vendors',
+        verbose_name="Point de vente associé"
+    )
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    phone = models.CharField(max_length=20, unique=True)
+    email = models.EmailField(blank=True, null=True)
+    photo = models.ImageField(upload_to='mobile_vendors/', blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='actif')
+    vehicle_type = models.CharField(max_length=20, choices=VEHICLE_CHOICES, default='moto')
+    vehicle_id = models.CharField(max_length=50, blank=True, null=True)
+    zones = models.JSONField(default=list)  # Zones de vente sous forme de liste
+    performance = models.FloatField(default=0.0)  # Performance en pourcentage
+    average_daily_sales = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    date_joined = models.DateField(default=timezone.now)
+    last_activity = models.DateTimeField(blank=True, null=True)
+    is_approved = models.BooleanField(default=False)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Vendeur ambulant"
+        verbose_name_plural = "Vendeurs ambulants"
+        ordering = ['-created_at']
+        unique_together = ['first_name', 'last_name', 'point_of_sale']
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} ({self.point_of_sale.name})"
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+    def update_performance(self):
+        """Méthode pour calculer et mettre à jour la performance du vendeur"""
+        # Implémentez votre logique de calcul de performance ici
+        # Par exemple, basée sur les ventes récentes, l'assiduité, etc.
+        pass
+
+
+class VendorActivity(models.Model):
+    """
+    Modèle pour suivre les activités quotidiennes des vendeurs ambulants
+    """
+    ACTIVITY_TYPES = [
+        ('check_in', 'Check-in'),
+        ('check_out', 'Check-out'),
+        ('sale', 'Vente'),
+        ('stock_replenishment', 'Réapprovisionnement'),
+        ('incident', 'Incident'),
+        ('other', 'Autre'),
+    ]
+
+    vendor = models.ForeignKey(
+        MobileVendor, 
+        on_delete=models.CASCADE, 
+        related_name='activities'
+    )
+    activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPES)
+    timestamp = models.DateTimeField(default=timezone.now)
+    location = models.JSONField(blank=True, null=True)  # {lat: x, lng: y}
+    notes = models.TextField(blank=True, null=True)
+    related_order = models.ForeignKey(
+        'Order', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='vendor_activities'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Activité de vendeur"
+        verbose_name_plural = "Activités des vendeurs"
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.vendor.full_name} - {self.get_activity_type_display()}"
+
+
+class VendorPerformance(models.Model):
+    """
+    Modèle pour enregistrer les performances mensuelles des vendeurs
+    """
+    vendor = models.ForeignKey(
+        MobileVendor, 
+        on_delete=models.CASCADE, 
+        related_name='performances'
+    )
+    month = models.DateField()  # Premier jour du mois
+    total_sales = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    orders_completed = models.PositiveIntegerField(default=0)
+    days_worked = models.PositiveIntegerField(default=0)
+    distance_covered = models.FloatField(default=0.0)  # En kilomètres
+    performance_score = models.FloatField(default=0.0)
+    bonus_earned = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Performance de vendeur"
+        verbose_name_plural = "Performances des vendeurs"
+        unique_together = ['vendor', 'month']
+        ordering = ['-month']
+
+    def __str__(self):
+        return f"{self.vendor.full_name} - {self.month.strftime('%B %Y')}"
+
+    def calculate_performance(self):
+        """Méthode pour calculer le score de performance"""
+        # Implémentez votre logique de calcul ici
+        pass
