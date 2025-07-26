@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from .views import (
     CategoryListCreateView, CategoryDetailView,
     SupplierListCreateView, SupplierDetailView,
@@ -88,6 +88,8 @@ urlpatterns = [
     # Notifications
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
     path('notifications/<uuid:pk>/', NotificationDetailView.as_view(), name='notification-detail'),
+
+    path('', include(router.urls)),
 
     # Endpoint supplémentaire pour le dashboard
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
