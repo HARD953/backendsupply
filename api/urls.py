@@ -18,6 +18,14 @@ from .views import (
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet
 
+from rest_framework.routers import DefaultRouter
+# Création du routeur
+router = DefaultRouter()
+
+router.register(r'mobile-vendors', MobileVendorViewSet, basename='mobile-vendor')
+router.register(r'vendor-activities', VendorActivityViewSet, basename='vendor-activity')
+router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vendor-performance')
+
 urlpatterns = [
     # Dashboard
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
