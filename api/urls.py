@@ -95,7 +95,6 @@ urlpatterns = [
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
 ]
 
-
 # # Créer répertoire et environnement virtuel
 # mkdir lanfiatech-backend
 # cd lanfiatech-backend

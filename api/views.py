@@ -55,6 +55,9 @@ class PointOfSaleListCreateView(generics.ListCreateAPIView):
     filterset_fields = ['type', 'status', 'district', 'region', 'commune']
     search_fields = ['name', 'owner', 'email']
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 class PointOfSaleDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = PointOfSale.objects.all()
     serializer_class = PointOfSaleSerializer
@@ -853,7 +856,6 @@ from .serializers import (
     VendorPerformanceSerializer,
     MobileVendorDetailSerializer
 )
-
 
 class MobileVendorViewSet(viewsets.ModelViewSet):
     queryset = MobileVendor.objects.select_related('point_of_sale').all()

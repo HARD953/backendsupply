@@ -20,12 +20,14 @@ class SupplierSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'contact', 'address', 'email', 'logo', 'created_at']
 
 class PointOfSaleSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True, default=serializers.CurrentUserDefault())
+
     class Meta:
         model = PointOfSale
         fields = [
             'id', 'name', 'owner', 'phone', 'email', 'address', 'latitude', 'longitude',
             'district', 'region', 'commune', 'type', 'status', 'registration_date',
-            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at'
+            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user'
         ]
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -349,8 +351,13 @@ class MobileVendorSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     vehicle_type_display = serializers.CharField(source='get_vehicle_type_display', read_only=True)
     full_name = serializers.SerializerMethodField()
-    zones = serializers.JSONField()
-    
+
+    # ✅ Corriger ici
+    zones = serializers.ListField(
+        child=serializers.CharField(),  # ou JSONField() si c'est une liste de dicts
+        allow_empty=True
+    )
+
     class Meta:
         model = MobileVendor
         fields = [
@@ -364,14 +371,16 @@ class MobileVendorSerializer(serializers.ModelSerializer):
             'point_of_sale': {'required': True},
             'phone': {'required': True}
         }
-    
+
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
-    
+
+    # Cette méthode devient redondante mais peut rester
     def validate_zones(self, value):
         if not isinstance(value, list):
             raise serializers.ValidationError("Les zones doivent être une liste")
         return value
+
 
 class VendorActivitySerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
