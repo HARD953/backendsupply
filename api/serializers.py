@@ -27,7 +27,7 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'owner', 'phone', 'email', 'address', 'latitude', 'longitude',
             'district', 'region', 'commune', 'type', 'status', 'registration_date',
-            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user'
+            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar'
         ]
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -177,6 +177,11 @@ class ProductSerializer(serializers.ModelSerializer):
             'point_of_sale', 'point_of_sale_id', 'description', 'status', 'main_image',
             'last_updated', 'created_at', 'variants', 'images'
         ]
+
+class SimpleProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'status']
 
 class StockMovementSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantSerializer(read_only=True)

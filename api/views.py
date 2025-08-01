@@ -421,7 +421,7 @@ from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 from .models import PointOfSale, Order, UserProfile, ProductVariant, StockMovement, Notification, Product
-from .serializers import DashboardSerializer, StockOverviewSerializer, ProductSerializer
+from .serializers import DashboardSerializer, StockOverviewSerializer, ProductSerializer, SimpleProductSerializer
 
 class DashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -738,15 +738,16 @@ class DashboardView(APIView):
             return f"{int(hours)}h"
         days = hours // 24
         return f"{int(days)}j"
+    
 
 class StockOverviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         try:
-            # Get POS associated with the user
             user_profile = UserProfile.objects.get(user=request.user)
             user_pos = user_profile.points_of_sale.all()
+
             if not user_pos.exists():
                 return Response(
                     {"error": "Aucun point de vente associé à cet utilisateur"},
@@ -755,7 +756,7 @@ class StockOverviewView(APIView):
 
             today = timezone.now().date()
 
-            # Cumulative data (across all user's POS)
+            # Cumulative data
             total_products = Product.objects.filter(point_of_sale__in=user_pos).count()
             stock_value = ProductVariant.objects.filter(
                 product__point_of_sale__in=user_pos
@@ -776,19 +777,19 @@ class StockOverviewView(APIView):
             ).select_related('product').order_by('current_stock')[:5]
 
             cumulative = {
-                'pos_id': None,  # Nullable for cumulative
+                'pos_id': None,
                 'pos_name': 'Total Général',
                 'total_products': total_products,
-                'stock_value': float(stock_value),
+                'stock_value': float(stock_value or 0),
                 'alert_count': alert_count,
                 'today_movements': today_movements,
-                'critical_products': ProductSerializer(
+                'critical_products': SimpleProductSerializer(
                     [v.product for v in critical_variants],
                     many=True
                 ).data
             }
 
-            # Per-POS data
+            # Per POS
             pos_data = []
             for pos in user_pos:
                 total_products = Product.objects.filter(point_of_sale=pos).count()
@@ -814,22 +815,20 @@ class StockOverviewView(APIView):
                     'pos_id': str(pos.id),
                     'pos_name': pos.name,
                     'total_products': total_products,
-                    'stock_value': float(stock_value),
+                    'stock_value': float(stock_value or 0),
                     'alert_count': alert_count,
                     'today_movements': today_movements,
-                    'critical_products': ProductSerializer(
+                    'critical_products': SimpleProductSerializer(
                         [v.product for v in critical_variants],
                         many=True
                     ).data
                 })
 
-            # Structure data
             data = {
                 'cumulative': cumulative,
                 'pos_data': pos_data
             }
 
-            # Initialize and validate serializer
             serializer = StockOverviewSerializer(data=data)
             serializer.is_valid(raise_exception=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -844,6 +843,7 @@ class StockOverviewView(APIView):
                 {"error": f"Erreur lors du chargement des données de stock: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
         
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
