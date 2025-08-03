@@ -14,7 +14,9 @@ from .views import (
     TokenTransactionListCreateView, TokenTransactionDetailView,
     NotificationListCreateView, NotificationDetailView,
     DashboardView, StockOverviewView,
+    ProductFormatListCreateView,ProductFormatDetailView,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
+
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet
 
@@ -61,6 +63,10 @@ urlpatterns = [
     path('products/', ProductListCreateView.as_view(), name='product-list-create'),
     path('products/<uuid:pk>/', ProductDetailView.as_view(), name='product-detail'),
     
+    # Produits-formats
+    path('products-formats/', ProductFormatListCreateView.as_view(), name='product-list-create'),
+    path('products-formats/<str:pk>/', ProductFormatDetailView.as_view(), name='product-detail'),
+
     # Variantes de produits (nouveaux endpoints)
     path('product-variants/', ProductVariantListCreateView.as_view(), name='product-variant-list-create'),
     path('product-variants/<uuid:pk>/', ProductVariantDetailView.as_view(), name='product-variant-detail'),

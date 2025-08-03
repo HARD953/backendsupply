@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from .models import (
     Category, Supplier, PointOfSale, Permission, Role, UserProfile,
     Product, ProductVariant, StockMovement, Order, OrderItem, Dispute, 
-    Token, TokenTransaction, Notification
+    Token, TokenTransaction, Notification,ProductFormat
 )
 from .serializers import (
     CategorySerializer, SupplierSerializer, PointOfSaleSerializer,
@@ -12,7 +12,8 @@ from .serializers import (
     ProductSerializer, ProductVariantSerializer, StockMovementSerializer, 
     OrderSerializer, OrderItemSerializer, DisputeSerializer, 
     TokenSerializer, TokenTransactionSerializer,
-    NotificationSerializer, DashboardSerializer, StockOverviewSerializer
+    NotificationSerializer, DashboardSerializer, StockOverviewSerializer,
+    ProductFormatSerializer
 )
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -33,6 +34,19 @@ class CategoryListCreateView(generics.ListCreateAPIView):
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+# Views existantes (inchangées sauf indication)
+class ProductFormatListCreateView(generics.ListCreateAPIView):
+    queryset = ProductFormat.objects.all()
+    serializer_class = ProductFormatSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [SearchFilter]
+    search_fields = ['name']
+
+class ProductFormatDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ProductFormat.objects.all()
+    serializer_class = ProductFormatSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 class SupplierListCreateView(generics.ListCreateAPIView):
