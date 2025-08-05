@@ -190,11 +190,12 @@ class ProductListCreateView(generics.ListCreateAPIView):
         ).select_related('category', 'supplier', 'point_of_sale')
 
     def perform_create(self, serializer):
-        # Vérifier que le POS assigné fait partie de ceux de l'utilisateur
-        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
-        if point_of_sale_id:
-            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
-            if str(point_of_sale_id) not in user_pos_ids:
+        # Get the PointOfSale instance directly from validated_data
+        point_of_sale = serializer.validated_data.get('point_of_sale')
+        
+        if point_of_sale:
+            user_pos_ids = [pos.id for pos in self.request.user.profile.points_of_sale.all()]
+            if point_of_sale.id not in user_pos_ids:
                 raise serializers.ValidationError(
                     {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
                 )

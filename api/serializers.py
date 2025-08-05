@@ -143,17 +143,32 @@ class ProductImageSerializer(serializers.ModelSerializer):
         model = ProductImage
         fields = ['id', 'image', 'caption', 'is_featured', 'order']
 
+
+class SimpleProductSerializer1(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'status']
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     format = ProductFormatSerializer(read_only=True)
     format_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
+        queryset=ProductFormat.objects.all(), 
+        source='format', 
+        write_only=True, 
+        allow_null=True
+    )
+    product = SimpleProductSerializer1(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(),
+        source='product',
+        write_only=True
     )
     
     class Meta:
         model = ProductVariant
         fields = [
-            'id', 'format', 'format_id', 'current_stock', 'min_stock', 
-            'max_stock', 'price', 'barcode', 'image'
+            'id', 'product', 'product_id', 'format', 'format_id', 
+            'current_stock', 'min_stock', 'max_stock', 'price', 'barcode', 'image'
         ]
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -166,7 +181,11 @@ class ProductSerializer(serializers.ModelSerializer):
         queryset=Supplier.objects.all(), source='supplier', write_only=True
     )
     point_of_sale = PointOfSaleSerializer(read_only=True)
-    point_of_sale_id = serializers.UUIDField(source='point_of_sale.id', write_only=True)
+    point_of_sale_id = serializers.PrimaryKeyRelatedField(
+        queryset=PointOfSale.objects.all(), 
+        source='point_of_sale', 
+        write_only=True
+    )
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
 
