@@ -69,7 +69,7 @@ urlpatterns = [
 
     # Variantes de produits (nouveaux endpoints)
     path('product-variants/', ProductVariantListCreateView.as_view(), name='product-variant-list-create'),
-    path('product-variants/<uuid:pk>/', ProductVariantDetailView.as_view(), name='product-variant-detail'),
+    path('product-variants/<int:id>/', ProductVariantDetailView.as_view(), name='product-variant-detail'),
     
     # Mouvements de stock
     path('stock-movements/', StockMovementListCreateView.as_view(), name='stock-movement-list-create'),
