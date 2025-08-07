@@ -152,23 +152,15 @@ class SimpleProductSerializer1(serializers.ModelSerializer):
 class ProductVariantSerializer(serializers.ModelSerializer):
     format = ProductFormatSerializer(read_only=True)
     format_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductFormat.objects.all(), 
-        source='format', 
-        write_only=True, 
-        allow_null=True
+        queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
     )
-    product = SimpleProductSerializer1(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.all(),
-        source='product',
-        write_only=True
-    )
+    product = SimpleProductSerializer1(read_only=True)  # Utilisation du serializer simplifié
     
     class Meta:
         model = ProductVariant
         fields = [
-            'id', 'product', 'product_id', 'format', 'format_id', 
-            'current_stock', 'min_stock', 'max_stock', 'price', 'barcode', 'image'
+            'id', 'product', 'format', 'format_id', 'current_stock', 'min_stock', 
+            'max_stock', 'price', 'barcode', 'image'
         ]
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -237,7 +229,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
     point_of_sale = PointOfSaleSerializer(read_only=True)
-    point_of_sale_id = serializers.UUIDField(source='point_of_sale.id', write_only=True)
+    point_of_sale_id = serializers.IntegerField(source='point_of_sale.id', write_only=True)
 
     class Meta:
         model = Order
@@ -269,7 +261,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class DisputeSerializer(serializers.ModelSerializer):
     order = OrderSerializer(read_only=True)
-    order_id = serializers.CharField(source='order.id', write_only=True, allow_null=True)
+    order_id = serializers.IntegerField(source='order.id', write_only=True, allow_null=True)
     complainant = serializers.CharField(source='complainant.username', read_only=True)
     complainant_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='complainant', write_only=True, allow_null=True
@@ -294,9 +286,9 @@ class TokenSerializer(serializers.ModelSerializer):
 
 class TokenTransactionSerializer(serializers.ModelSerializer):
     token = TokenSerializer(read_only=True)
-    token_id = serializers.UUIDField(source='token.id', write_only=True)
+    token_id = serializers.IntegerField(source='token.id', write_only=True)
     order = OrderSerializer(read_only=True)
-    order_id = serializers.CharField(source='order.id', write_only=True, allow_null=True)
+    order_id = serializers.IntegerField(source='order.id', write_only=True, allow_null=True)
 
     class Meta:
         model = TokenTransaction
@@ -311,9 +303,9 @@ class NotificationSerializer(serializers.ModelSerializer):
         queryset=User.objects.all(), source='user', write_only=True
     )
     related_order = OrderSerializer(read_only=True)
-    related_order_id = serializers.CharField(source='related_order.id', write_only=True, allow_null=True)
+    related_order_id = serializers.IntegerField(source='related_order.id', write_only=True, allow_null=True)
     related_product = ProductSerializer(read_only=True)
-    related_product_id = serializers.UUIDField(source='related_product.id', write_only=True, allow_null=True)
+    related_product_id = serializers.IntegerField(source='related_product.id', write_only=True, allow_null=True)
 
     class Meta:
         model = Notification
@@ -323,10 +315,11 @@ class NotificationSerializer(serializers.ModelSerializer):
             'created_at'
         ]
 
+
 from rest_framework import serializers
 
 class PosDashboardSerializer(serializers.Serializer):
-    pos_id = serializers.UUIDField(allow_null=True)  # Allow null for cumulative
+    pos_id = serializers.IntegerField(allow_null=True)  # Allow null for cumulative
     pos_name = serializers.CharField()
     stats = serializers.ListField(
         child=serializers.DictField(
@@ -344,12 +337,13 @@ class PosDashboardSerializer(serializers.Serializer):
         )
     )
 
+
 class DashboardSerializer(serializers.Serializer):
     cumulative = PosDashboardSerializer()
     pos_data = serializers.ListField(child=PosDashboardSerializer())
 
 class PosStockOverviewSerializer(serializers.Serializer):
-    pos_id = serializers.UUIDField(allow_null=True)  # Allow null for cumulative
+    pos_id = serializers.IntegerField(allow_null=True)  # Allow null for cumulative
     pos_name = serializers.CharField()
     total_products = serializers.IntegerField()
     stock_value = serializers.FloatField()

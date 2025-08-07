@@ -185,7 +185,7 @@ class UserProfile(models.Model):
                 address=self.establishment_address,
                 type=self.establishment_type,
                 registration_date=self.establishment_registration_date,
-                # Vous pouvez ajouter d'autres champs nécessaires ici
+                user=self.user,  # Add this line to set the user relationship
             )
             self.points_of_sale.add(pos)
     def __str__(self):
