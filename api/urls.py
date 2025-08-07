@@ -77,7 +77,7 @@ urlpatterns = [
     
     # Commandes
     path('orders/', OrderListCreateView.as_view(), name='order-list-create'),
-    path('orders/<int:pk>/', OrderDetailView.as_view(), name='order-detail'),
+    path('orders/<int:id>/', OrderDetailView.as_view(), name='order-detail'),
     
     # Litiges
     path('disputes/', DisputeListCreateView.as_view(), name='dispute-list-create'),
