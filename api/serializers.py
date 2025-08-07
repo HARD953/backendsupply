@@ -152,15 +152,24 @@ class SimpleProductSerializer1(serializers.ModelSerializer):
 class ProductVariantSerializer(serializers.ModelSerializer):
     format = ProductFormatSerializer(read_only=True)
     format_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
+        # queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True,
+        queryset=ProductFormat.objects.all(), 
+        source='format', 
+        write_only=True, 
+        allow_null=True
     )
-    product = SimpleProductSerializer1(read_only=True)  # Utilisation du serializer simplifié
-    
+    product = SimpleProductSerializer1(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(),
+        source='product',
+        write_only=True
+    )
+
     class Meta:
         model = ProductVariant
         fields = [
-            'id', 'product', 'format', 'format_id', 'current_stock', 'min_stock', 
-            'max_stock', 'price', 'barcode', 'image'
+            'id', 'product', 'product_id', 'format', 'format_id', 
+            'current_stock', 'min_stock', 'max_stock', 'price', 'barcode', 'image'
         ]
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -174,19 +183,20 @@ class ProductSerializer(serializers.ModelSerializer):
     )
     point_of_sale = PointOfSaleSerializer(read_only=True)
     point_of_sale_id = serializers.PrimaryKeyRelatedField(
-        queryset=PointOfSale.objects.all(), 
-        source='point_of_sale', 
-        write_only=True
+        queryset=PointOfSale.objects.all(), source='point_of_sale', write_only=True
     )
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
+    format_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
+    )
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'category', 'category_id', 'sku', 'supplier', 'supplier_id',
             'point_of_sale', 'point_of_sale_id', 'description', 'status', 'main_image',
-            'last_updated', 'created_at', 'variants', 'images'
+            'last_updated', 'created_at', 'variants', 'images', 'format_id'
         ]
 
 class SimpleProductSerializer(serializers.ModelSerializer):
