@@ -45,15 +45,15 @@ urlpatterns = [
     
     # Points de vente
     path('points-vente/', PointOfSaleListCreateView.as_view(), name='point-of-sale-list-create'),
-    path('points-vente/<uuid:pk>/', PointOfSaleDetailView.as_view(), name='point-of-sale-detail'),
+    path('points-vente/<int:pk>/', PointOfSaleDetailView.as_view(), name='point-of-sale-detail'),
     
     # Permissions
     path('permissions/', PermissionListView.as_view(), name='permission-list'),
-    path('permissions/<str:pk>/', PermissionDetailView.as_view(), name='permission-detail'),
+    path('permissions/<int:pk>/', PermissionDetailView.as_view(), name='permission-detail'),
     
     # Rôles
     path('roles/', RoleListCreateView.as_view(), name='role-list-create'),
-    path('roles/<str:pk>/', RoleDetailView.as_view(), name='role-detail'),
+    path('roles/<int:pk>/', RoleDetailView.as_view(), name='role-detail'),
     
     # Utilisateurs
     path('users/', UserProfileListCreateView.as_view(), name='user-list-create'),
@@ -61,39 +61,39 @@ urlpatterns = [
     
     # Produits
     path('products/', ProductListCreateView.as_view(), name='product-list-create'),
-    path('products/<uuid:pk>/', ProductDetailView.as_view(), name='product-detail'),
+    path('products/<int:pk>/', ProductDetailView.as_view(), name='product-detail'),
     
     # Produits-formats
     path('products-formats/', ProductFormatListCreateView.as_view(), name='product-list-create'),
-    path('products-formats/<str:pk>/', ProductFormatDetailView.as_view(), name='product-detail'),
+    path('products-formats/<int:pk>/', ProductFormatDetailView.as_view(), name='product-detail'),
 
     # Variantes de produits (nouveaux endpoints)
     path('product-variants/', ProductVariantListCreateView.as_view(), name='product-variant-list-create'),
-    path('product-variants/<int:id>/', ProductVariantDetailView.as_view(), name='product-variant-detail'),
+    path('product-variants/<int:pk>/', ProductVariantDetailView.as_view(), name='product-variant-detail'),
     
     # Mouvements de stock
     path('stock-movements/', StockMovementListCreateView.as_view(), name='stock-movement-list-create'),
-    path('stock-movements/<uuid:pk>/', StockMovementDetailView.as_view(), name='stock-movement-detail'),
+    path('stock-movements/<int:pk>/', StockMovementDetailView.as_view(), name='stock-movement-detail'),
     
     # Commandes
     path('orders/', OrderListCreateView.as_view(), name='order-list-create'),
-    path('orders/<str:pk>/', OrderDetailView.as_view(), name='order-detail'),
+    path('orders/<int:pk>/', OrderDetailView.as_view(), name='order-detail'),
     
     # Litiges
     path('disputes/', DisputeListCreateView.as_view(), name='dispute-list-create'),
-    path('disputes/<uuid:pk>/', DisputeDetailView.as_view(), name='dispute-detail'),
+    path('disputes/<int:pk>/', DisputeDetailView.as_view(), name='dispute-detail'),
     
     # Tokens
     path('tokens/', TokenListCreateView.as_view(), name='token-list-create'),
-    path('tokens/<uuid:pk>/', TokenDetailView.as_view(), name='token-detail'),
+    path('tokens/<int:pk>/', TokenDetailView.as_view(), name='token-detail'),
     
     # Transactions de tokens
     path('token-transactions/', TokenTransactionListCreateView.as_view(), name='token-transaction-list-create'),
-    path('token-transactions/<uuid:pk>/', TokenTransactionDetailView.as_view(), name='token-transaction-detail'),
+    path('token-transactions/<int:pk>/', TokenTransactionDetailView.as_view(), name='token-transaction-detail'),
     
     # Notifications
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
-    path('notifications/<uuid:pk>/', NotificationDetailView.as_view(), name='notification-detail'),
+    path('notifications/<int:pk>/', NotificationDetailView.as_view(), name='notification-detail'),
 
     path('', include(router.urls)),
 

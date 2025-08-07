@@ -58,9 +58,9 @@ MIDDLEWARE = [
 
 # Configuration de l'authentification (optionnel, si tu utilises JWT)
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
+    # 'DEFAULT_AUTHENTICATION_CLASSES': [
+    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
+    # ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
@@ -96,7 +96,7 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 #     }
 # }
 
-DATABASE_URL = config('DATABASE_URL', default='postgresql://dbchain_3sx9_user:w2KLey75pdAlXG910cHmFYHAoMff1dfL@dpg-d1s0en95pdvs739p1um0-a.oregon-postgres.render.com/dbchain_3sx9')
+DATABASE_URL = config('DATABASE_URL', default='postgresql://chain_j4kd_user:OHvqVvApbtHjlfrUjG9rGOwTg4yTIryl@dpg-d2ac8nh5pdvs73akej70-a.oregon-postgres.render.com/chain_j4kd')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL),  # Utilisez dj-database-url pour parser l'URL
 }

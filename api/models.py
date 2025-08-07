@@ -56,7 +56,7 @@ class PointOfSale(models.Model):
         ('en_attente', 'En attente'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user')
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     name = models.CharField(max_length=200) 
     owner = models.CharField(max_length=200)  # Propriétaire
@@ -88,7 +88,7 @@ class Permission(models.Model):
     """
     Modèle pour les permissions (ex. gestion des stocks, consultation des rapports).
     """
-    id = models.CharField(max_length=50, primary_key=True)
+    # id = models.CharField(max_length=50, primary_key=True)
     name = models.CharField(max_length=100)
     category = models.CharField(max_length=50)
     description = models.TextField(blank=True, null=True)
@@ -104,7 +104,7 @@ class Role(models.Model):
     """
     Modèle pour les rôles des utilisateurs (ex. Super Admin, Gestionnaire Stock).
     """
-    id = models.CharField(max_length=50, primary_key=True)
+    # id = models.CharField(max_length=50, primary_key=True)
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
     color = models.CharField(max_length=100, blank=True, null=True)
@@ -222,7 +222,7 @@ class Product(models.Model):
         ('surstockage', 'Surstockage'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
     sku = models.CharField(max_length=50, unique=True)
@@ -303,7 +303,7 @@ class StockMovement(models.Model):
         ('ajustement', 'Ajustement'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     product_variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='movements')
     type = models.CharField(max_length=20, choices=MOVEMENT_TYPES)
     quantity = models.PositiveIntegerField()
@@ -348,7 +348,7 @@ class Order(models.Model):
         ('high', 'Haute'),
     ]
 
-    id = models.CharField(max_length=20, primary_key=True)
+    # id = models.CharField(max_length=20, primary_key=True)
     customer_name = models.CharField(max_length=200)
     customer_email = models.EmailField(blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
@@ -402,7 +402,7 @@ class Dispute(models.Model):
         ('en_attente', 'En attente'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='disputes', null=True, blank=True)
     complainant = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='disputes_filed')
     description = models.TextField()
@@ -422,7 +422,7 @@ class Token(models.Model):
     """
     Modèle pour les jetons utilisés dans les transactions.
     """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tokens')
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -445,7 +445,7 @@ class TokenTransaction(models.Model):
         ('refund', 'Remboursement'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     token = models.ForeignKey(Token, on_delete=models.CASCADE, related_name='transactions')
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     amount = models.DecimalField(max_digits=15, decimal_places=2)
@@ -481,7 +481,7 @@ class Notification(models.Model):
         ('general', 'Général'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     message = models.TextField()
@@ -523,7 +523,7 @@ class MobileVendor(models.Model):
         ('autre', 'Autre'),
     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='mobile_vendor', null=True, blank=True)
     point_of_sale = models.ForeignKey(
         'PointOfSale', 
