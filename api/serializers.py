@@ -29,6 +29,9 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
             'district', 'region', 'commune', 'type', 'status', 'registration_date',
             'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar'
         ]
+        extra_kwargs = {
+            'registration_date': {'read_only': True},
+        }
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
