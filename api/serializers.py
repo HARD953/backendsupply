@@ -164,7 +164,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         queryset=Product.objects.all(),
         source='product',
         write_only=True,
-        pk_field=serializers.IntegerField()  # Ceci permet d'accepter les IDs comme entiers ou chaînes
+        required=True  # Ajout de required=True pour s'assurer que product_id est toujours fourni
     )
 
     class Meta:
