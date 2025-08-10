@@ -117,6 +117,10 @@ class Role(models.Model):
         verbose_name = "Rôle"
         verbose_name_plural = "Rôles"
 
+
+def today_date():
+    return timezone.now().date()
+
 class UserProfile(models.Model):
     """
     Modèle pour étendre le modèle User de Django avec des informations supplémentaires.
@@ -162,7 +166,7 @@ class UserProfile(models.Model):
     )
     establishment_registration_date = models.DateField(
         verbose_name="Date d'enregistrement",
-        default=timezone.now
+        default=today_date
     )
 
     def __str__(self):

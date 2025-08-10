@@ -83,7 +83,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'establishment_address', 'establishment_type', 'establishment_registration_date'
         ]
         extra_kwargs = {
-            'join_date': {'read_only': True},
+            'last_login': {'read_only': True},
             'establishment_registration_date': {'read_only': True},
         }
 
