@@ -227,12 +227,12 @@ class StockMovementSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantSerializer(read_only=True)
     product_variant_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductVariant.objects.all(), 
-        source='product_variant', 
+        queryset=ProductVariant.objects.all(),
+        source='product_variant',
         write_only=True
     )
     product_name = serializers.CharField(source='product_variant.product.name', read_only=True)
-    name = serializers.CharField(required=False)  # In your serializer fields
+    name = serializers.CharField(required=False)
 
     class Meta:
         model = OrderItem
@@ -241,82 +241,129 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'name', 'quantity', 'price', 'total'
         ]
         extra_kwargs = {
-            'product_variant_id': {'required': True},
-            'total': {'required': False}  # We'll calculate this
+            'total': {'required': False},
+            'price': {'required': False}
         }
 
     def validate(self, data):
+        product_variant = data.get('product_variant')
+        quantity = data.get('quantity')
+
+        if not product_variant or not quantity:
+            raise serializers.ValidationError("Product variant and quantity are required")
+
         # Calculate total automatically
-        data['total'] = str(float(data['product_variant'].price) * data['quantity'])
-        data['name'] = f"{data['product_variant'].product.name} - {data['product_variant'].format.name}"
+        data['total'] = str(float(product_variant.price) * quantity)
+        
+        # Generate name if not provided
+        if 'name' not in data or not data['name']:
+            data['name'] = (
+                f"{product_variant.product.name} - "
+                f"{product_variant.format.name if product_variant.format else 'No format'}"
+            )
+        
         return data
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
     point_of_sale = serializers.PrimaryKeyRelatedField(
-        read_only=True,
-        default=None  # Important pour la création
+        queryset=PointOfSale.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    point_of_sale_details = PointOfSaleSerializer(
+        source='point_of_sale',
+        read_only=True
     )
 
     class Meta:
         model = Order
         fields = [
             'id', 'customer_name', 'customer_email', 'customer_phone',
-            'customer_address', 'point_of_sale', 'status', 'total',
-            'date', 'delivery_date', 'priority', 'notes',
-            'created_at', 'updated_at', 'items'
+            'customer_address', 'point_of_sale', 'point_of_sale_details',
+            'status', 'total', 'date', 'delivery_date', 'priority',
+            'notes', 'created_at', 'updated_at', 'items'
         ]
+        read_only_fields = ['status', 'total', 'created_at', 'updated_at']
 
     def validate(self, data):
         items = data.get('items', [])
         if not items:
-            raise serializers.ValidationError("Au moins un article est requis")
-        
-        # Récupération du point de vente
-        first_variant = items[0]['product_variant']
-        point_of_sale = first_variant.product.point_of_sale
-        
-        # Vérification de la cohérence des points de vente
+            raise serializers.ValidationError("At least one item is required")
+
+        # Determine point_of_sale from first item if not provided
+        if 'point_of_sale' not in data or not data['point_of_sale']:
+            first_item = items[0]
+            product_variant = first_item.get('product_variant')
+            if not product_variant:
+                raise serializers.ValidationError("Product variant is required in items")
+            
+            data['point_of_sale'] = product_variant.product.point_of_sale
+
+        # Verify all items belong to the same point_of_sale
+        point_of_sale = data['point_of_sale']
         for item in items:
-            if item['product_variant'].product.point_of_sale != point_of_sale:
+            item_variant = item.get('product_variant')
+            if item_variant.product.point_of_sale != point_of_sale:
                 raise serializers.ValidationError(
-                    "Tous les articles doivent appartenir au même point de vente"
+                    "All items must belong to the same point of sale"
                 )
-        
-        # Ajout du point de vente aux données validées
-        validated_data = data.copy()
-        validated_data['point_of_sale'] = point_of_sale
-        return validated_data
+
+        # Calculate order total
+        total = sum(
+            float(item.get('product_variant').price) * item.get('quantity', 0)
+            for item in items
+        )
+        data['total'] = str(total)
+
+        return data
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
-        
+
         for item_data in items_data:
+            product_variant = item_data['product_variant']
             OrderItem.objects.create(
                 order=order,
-                product_variant=item_data['product_variant'],
+                product_variant=product_variant,
                 quantity=item_data['quantity'],
-                price=item_data['product_variant'].price,
-                total=str(float(item_data['product_variant'].price) * item_data['quantity']),
-                name=f"{item_data['product_variant'].product.name} - {item_data['product_variant'].format.name}"
+                price=product_variant.price,
+                total=float(product_variant.price) * item_data['quantity'],
+                name=item_data.get('name', 
+                    f"{product_variant.product.name} - "
+                    f"{product_variant.format.name if product_variant.format else ''}"
+                )
             )
+
         return order
 
-    def create(self, validated_data):
-        items_data = validated_data.pop('items')
-        order = Order.objects.create(**validated_data)
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
         
-        for item_data in items_data:
-            OrderItem.objects.create(
-                order=order,
-                product_variant=item_data['product_variant'],
-                quantity=item_data['quantity'],
-                price=item_data['product_variant'].price,
-                total=str(float(item_data['product_variant'].price) * item_data['quantity'],
-                name=f"{item_data['product_variant'].product.name} - {item_data['product_variant'].format.name}")
-            )
-        return order
+        # Update order fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update or recreate items if provided
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                product_variant = item_data['product_variant']
+                OrderItem.objects.create(
+                    order=instance,
+                    product_variant=product_variant,
+                    quantity=item_data['quantity'],
+                    price=product_variant.price,
+                    total=float(product_variant.price) * item_data['quantity'],
+                    name=item_data.get('name', 
+                        f"{product_variant.product.name} - "
+                        f"{product_variant.format.name if product_variant.format else ''}"
+                    )
+                )
+
+        return instance
 
 class DisputeSerializer(serializers.ModelSerializer):
     order = OrderSerializer(read_only=True)

@@ -340,17 +340,27 @@ class OrderListCreateView(generics.ListCreateAPIView):
         user_pos = self.request.user.profile.points_of_sale.all()
         return Order.objects.filter(
             point_of_sale__in=user_pos
-        ).select_related('point_of_sale')
+        ).select_related('point_of_sale').prefetch_related('items')
 
     def perform_create(self, serializer):
-        # Vérifier que le POS fait partie de ceux de l'utilisateur
-        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
-        if point_of_sale_id:
-            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
-            if str(point_of_sale_id) not in user_pos_ids:
+        # Récupérer le point de vente depuis les données validées
+        point_of_sale = serializer.validated_data.get('point_of_sale')
+        
+        # Si point_of_sale est fourni (cas où vous voulez le surcharger)
+        if point_of_sale:
+            # Vérifier que l'utilisateur a accès à ce POS
+            if not self.request.user.profile.points_of_sale.filter(id=point_of_sale.id).exists():
                 raise serializers.ValidationError(
                     {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
                 )
+        else:
+            # Sinon, déterminer le POS automatiquement à partir des articles
+            items_data = serializer.validated_data.get('items', [])
+            if items_data:
+                first_item = items_data[0]
+                point_of_sale = first_item['product_variant'].product.point_of_sale
+                serializer.validated_data['point_of_sale'] = point_of_sale
+        
         serializer.save()
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
