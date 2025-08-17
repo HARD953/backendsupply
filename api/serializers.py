@@ -232,7 +232,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
         write_only=True
     )
     product_name = serializers.CharField(source='product_variant.product.name', read_only=True)
-
+    name = serializers.CharField(required=False)  # In your serializer fields
+    
     class Meta:
         model = OrderItem
         fields = [
