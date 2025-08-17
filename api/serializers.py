@@ -227,7 +227,9 @@ class StockMovementSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantSerializer(read_only=True)
     product_variant_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductVariant.objects.all(), source='product_variant', write_only=True, allow_null=True
+        queryset=ProductVariant.objects.all(), 
+        source='product_variant', 
+        write_only=True
     )
     product_name = serializers.CharField(source='product_variant.product.name', read_only=True)
 
@@ -237,39 +239,66 @@ class OrderItemSerializer(serializers.ModelSerializer):
             'id', 'product_variant', 'product_variant_id', 'product_name',
             'name', 'quantity', 'price', 'total'
         ]
+        extra_kwargs = {
+            'product_variant_id': {'required': True},
+            'total': {'required': False}  # We'll calculate this
+        }
+
+    def validate(self, data):
+        # Calculate total automatically
+        data['total'] = str(float(data['product_variant'].price) * data['quantity'])
+        data['name'] = f"{data['product_variant'].product.name} - {data['product_variant'].format.name}"
+        return data
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
+    # Supprimer point_of_sale_id car il sera déterminé automatiquement
     point_of_sale = PointOfSaleSerializer(read_only=True)
-    point_of_sale_id = serializers.IntegerField(source='point_of_sale.id', write_only=True)
 
     class Meta:
         model = Order
         fields = [
             'id', 'customer_name', 'customer_email', 'customer_phone',
-            'customer_address', 'point_of_sale', 'point_of_sale_id',
-            'status', 'total', 'date', 'delivery_date', 'priority',
-            'notes', 'created_at', 'updated_at', 'items'
+            'customer_address', 'point_of_sale', 'status', 'total', 
+            'date', 'delivery_date', 'priority', 'notes', 
+            'created_at', 'updated_at', 'items'
         ]
+        # Supprimer aussi les extra_kwargs pour point_of_sale_id
+
+    def validate(self, data):
+        items = data.get('items', [])
+        if not items:
+            raise serializers.ValidationError("Au moins un article est requis")
+        
+        # Déterminer le point de vente à partir du premier article
+        first_item = items[0]
+        product_variant = first_item['product_variant']
+        point_of_sale = product_variant.product.point_of_sale
+        
+        # Vérifier que tous les articles appartiennent au même point de vente
+        for item in items:
+            if item['product_variant'].product.point_of_sale != point_of_sale:
+                raise serializers.ValidationError(
+                    "Tous les articles doivent appartenir au même point de vente"
+                )
+        
+        data['point_of_sale'] = point_of_sale
+        return data
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
+        
         for item_data in items_data:
-            OrderItem.objects.create(order=order, **item_data)
+            OrderItem.objects.create(
+                order=order,
+                product_variant=item_data['product_variant'],
+                quantity=item_data['quantity'],
+                price=item_data['product_variant'].price,
+                total=str(float(item_data['product_variant'].price) * item_data['quantity'],
+                name=f"{item_data['product_variant'].product.name} - {item_data['product_variant'].format.name}")
+            )
         return order
-
-    def update(self, instance, validated_data):
-        items_data = validated_data.pop('items', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        if items_data:
-            instance.items.all().delete()
-            for item_data in items_data:
-                OrderItem.objects.create(order=instance, **item_data)
-        return instance
 
 class DisputeSerializer(serializers.ModelSerializer):
     order = OrderSerializer(read_only=True)
