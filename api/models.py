@@ -647,3 +647,53 @@ class VendorPerformance(models.Model):
         """Méthode pour calculer le score de performance"""
         # Implémentez votre logique de calcul ici
         pass
+
+class Purchase(models.Model):
+    """
+    Modèle pour représenter les achats effectués par les vendeurs ambulants
+    """
+    vendor = models.ForeignKey(
+        'MobileVendor',
+        on_delete=models.CASCADE,
+        related_name='purchases',
+        verbose_name="Vendeur ambulant"
+    )
+    first_name = models.CharField(max_length=100, verbose_name="Prénom")
+    last_name = models.CharField(max_length=100, verbose_name="Nom")
+    zone = models.CharField(max_length=100, verbose_name="Zone de vente")
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Montant vendu")
+    photo = models.ImageField(upload_to='purchases/', blank=True, null=True, verbose_name="Photo")
+    purchase_date = models.DateTimeField(default=timezone.now, verbose_name="Date de l'achat")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
+
+    class Meta:
+        verbose_name = "Achat"
+        verbose_name_plural = "Achats"
+        ordering = ['-purchase_date']
+
+    def __str__(self):
+        return f"Achat de {self.first_name} {self.last_name} - {self.amount} ({self.zone})"
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+    
+    def update_performance(self):
+        """Méthode pour calculer et mettre à jour la performance du vendeur"""
+        purchases = self.purchases.all()
+        total_sales = sum(purchase.amount for purchase in purchases)
+        purchase_count = purchases.count()
+        
+        # Exemple de calcul : performance basée sur le montant total vendu
+        # et le nombre de ventes (à personnaliser selon vos besoins)
+        if purchase_count > 0:
+            self.performance = (total_sales / purchase_count) * 100  # Exemple de formule
+        else:
+            self.performance = 0.0
+        
+        # Mise à jour de average_daily_sales
+        days_active = (timezone.now().date() - self.date_joined).days or 1
+        self.average_daily_sales = total_sales / days_active
+        
+        self.save()

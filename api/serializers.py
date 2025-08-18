@@ -544,3 +544,29 @@ class MobileVendorDetailSerializer(MobileVendorSerializer):
     
     class Meta(MobileVendorSerializer.Meta):
         fields = MobileVendorSerializer.Meta.fields + ['activities', 'performances']
+
+from .models import Purchase, MobileVendor
+
+class PurchaseSerializer(serializers.ModelSerializer):
+    """
+    Serializer pour le modèle Purchase
+    """
+    vendor = serializers.PrimaryKeyRelatedField(queryset=MobileVendor.objects.all())
+    full_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Purchase
+        fields = [
+            'id', 'vendor', 'first_name', 'last_name', 'full_name', 
+            'zone', 'amount', 'photo', 'purchase_date', 
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at','vendor']
+
+    def validate(self, data):
+        """
+        Validation personnalisée pour s'assurer que les données sont cohérentes
+        """
+        if data['amount'] < 0:
+            raise serializers.ValidationError({"amount": "Le montant ne peut pas être négatif."})
+        return data

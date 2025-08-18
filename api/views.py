@@ -966,3 +966,39 @@ class VendorPerformanceViewSet(viewsets.ModelViewSet):
     filterset_fields = ['vendor', 'month']
     ordering_fields = ['month', 'performance_score']
     ordering = ['-month']
+
+
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
+from .models import Purchase, MobileVendor
+from .serializers import PurchaseSerializer
+
+class PurchaseViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pour gérer les opérations CRUD sur le modèle Purchase
+    """
+    queryset = Purchase.objects.all()
+    serializer_class = PurchaseSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        """
+        Associe automatiquement le vendeur connecté lors de la création
+        """
+        try:
+            # Récupère le MobileVendor associé à l'utilisateur connecté
+            vendor = MobileVendor.objects.get(user=self.request.user)
+        except MobileVendor.DoesNotExist:
+            raise ValidationError({"detail": "Aucun vendeur ambulant associé à cet utilisateur."})
+        
+        serializer.save(vendor=vendor)
+
+    def get_queryset(self):
+        """
+        Filtre optionnel par vendeur si 'vendor_id' est fourni dans les paramètres
+        """
+        queryset = super().get_queryset()
+        vendor_id = self.request.query_params.get('vendor_id')
+        if vendor_id:
+            queryset = queryset.filter(vendor_id=vendor_id)
+        return queryset.order_by('-purchase_date')

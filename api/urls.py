@@ -18,7 +18,7 @@ from .views import (
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 
 )
-from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet
+from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet
 
 from .views_rapports import (
     SalesAnalyticsView, InventoryStatusView,
@@ -33,6 +33,7 @@ router = DefaultRouter()
 router.register(r'mobile-vendors', MobileVendorViewSet, basename='mobile-vendor')
 router.register(r'vendor-activities', VendorActivityViewSet, basename='vendor-activity')
 router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vendor-performance')
+router.register(r'purchases', PurchaseViewSet, basename='purchase')
 
 urlpatterns = [
     # Dashboard

@@ -18,6 +18,7 @@ admin.site.register(TokenTransaction)
 admin.site.register(Notification)
 admin.site.register(ProductVariant)
 admin.site.register(ProductFormat)
+admin.site.register(Purchase)
 
 from .models import MobileVendor, VendorActivity, VendorPerformance
 
