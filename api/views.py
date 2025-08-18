@@ -460,6 +460,16 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal
 from .models import PointOfSale, Order, UserProfile, ProductVariant, StockMovement, Notification, Product
 from .serializers import DashboardSerializer, StockOverviewSerializer, ProductSerializer, SimpleProductSerializer
+from django.utils import timezone
+from django.db.models import Sum, Q
+from django.db.models.functions import Coalesce
+from rest_framework import permissions, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from decimal import Decimal
+from datetime import timedelta
+from .models import UserProfile, Order, StockMovement, Notification, PointOfSale
+from .serializers import DashboardSerializer
 
 class DashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -536,7 +546,7 @@ class DashboardView(APIView):
             for order in recent_orders:
                 cumulative_activities.append({
                     'action': f"Commande {order.id} créée",
-                    'user': order.customer_name,
+                    'user': order.customer.user.username if order.customer and order.customer.user else 'Unknown',
                     'time': (timezone.now() - order.created_at).total_seconds() // 60,
                     'icon': 'ShoppingCart',
                     'color': 'bg-purple-100'
@@ -612,7 +622,7 @@ class DashboardView(APIView):
                 'alerts': cumulative_alerts
             }
 
-            # Per-POS data (unchanged from previous)
+            # Per-POS data
             pos_data = []
             for pos in user_pos:
                 pos_count = 1
@@ -670,7 +680,7 @@ class DashboardView(APIView):
                 for order in recent_orders:
                     recent_activities.append({
                         'action': f"Commande {order.id} créée",
-                        'user': order.customer_name,
+                        'user': order.customer.user.username if order.customer and order.customer.user else 'Unknown',
                         'time': (timezone.now() - order.created_at).total_seconds() // 60,
                         'icon': 'ShoppingCart',
                         'color': 'bg-purple-100'
@@ -776,7 +786,6 @@ class DashboardView(APIView):
             return f"{int(hours)}h"
         days = hours // 24
         return f"{int(days)}j"
-    
 
 class StockOverviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
