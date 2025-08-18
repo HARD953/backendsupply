@@ -36,6 +36,19 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+
+# Views existantes (inchangées sauf indication)
+class OrderItemListCreateView(generics.ListCreateAPIView):
+    queryset = OrderItem.objects.all()
+    serializer_class = OrderItemSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+class OrderItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = OrderItem.objects.all()
+    serializer_class = OrderItemSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
 # Views existantes (inchangées sauf indication)
 class ProductFormatListCreateView(generics.ListCreateAPIView):
     queryset = ProductFormat.objects.all()
@@ -925,12 +938,17 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class VendorActivityViewSet(viewsets.ModelViewSet):
-    queryset = VendorActivity.objects.select_related('vendor', 'related_order').all()
+    queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_items').all()
     serializer_class = VendorActivitySerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['vendor', 'activity_type', 'related_order']
     ordering_fields = ['timestamp']
     ordering = ['-timestamp']
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if 'related_items' in self.request.data:
+            instance.related_items.set(self.request.data['related_items'])
 
 class VendorPerformanceViewSet(viewsets.ModelViewSet):
     queryset = VendorPerformance.objects.select_related('vendor').all()

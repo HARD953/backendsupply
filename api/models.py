@@ -352,11 +352,12 @@ class Order(models.Model):
         ('high', 'Haute'),
     ]
 
-    # id = models.CharField(max_length=20, primary_key=True)
-    customer_name = models.CharField(max_length=200)
-    customer_email = models.EmailField(blank=True, null=True)
-    customer_phone = models.CharField(max_length=20, blank=True, null=True)
-    customer_address = models.TextField()
+    customer = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name='orders',
+        verbose_name="Client"
+    )
     point_of_sale = models.ForeignKey(PointOfSale, on_delete=models.CASCADE, related_name='orders')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     total = models.DecimalField(max_digits=15, decimal_places=2)
@@ -368,7 +369,7 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Commande {self.id} - {self.customer_name}"
+        return f"Commande {self.id} - {self.customer.user}"
 
     class Meta:
         verbose_name = "Commande"

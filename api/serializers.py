@@ -275,14 +275,18 @@ class OrderSerializer(serializers.ModelSerializer):
         source='point_of_sale',
         read_only=True
     )
+    customer_details = UserProfileSerializer(
+        source='customer',
+        read_only=True
+    )
 
     class Meta:
         model = Order
         fields = [
-            'id', 'customer_name', 'customer_email', 'customer_phone',
-            'customer_address', 'point_of_sale', 'point_of_sale_details',
-            'status', 'total', 'date', 'delivery_date', 'priority',
-            'notes', 'created_at', 'updated_at', 'items'
+            'id', 'customer', 'customer_details', 'point_of_sale', 
+            'point_of_sale_details', 'status', 'total', 'date', 
+            'delivery_date', 'priority', 'notes', 'created_at', 
+            'updated_at', 'items'
         ]
         read_only_fields = ['status', 'total', 'created_at', 'updated_at']
 
@@ -504,6 +508,7 @@ class MobileVendorSerializer(serializers.ModelSerializer):
         if not isinstance(value, list):
             raise serializers.ValidationError("Les zones doivent être une liste")
         return value
+
 
 
 class VendorActivitySerializer(serializers.ModelSerializer):

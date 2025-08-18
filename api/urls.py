@@ -20,6 +20,12 @@ from .views import (
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet
 
+from .views_rapports import (
+    SalesAnalyticsView, InventoryStatusView,
+    POSPerformanceView, CategorySalesView,
+    SalesTrendView
+)
+
 from rest_framework.routers import DefaultRouter
 # Création du routeur
 router = DefaultRouter()
@@ -79,6 +85,10 @@ urlpatterns = [
     path('orders/', OrderListCreateView.as_view(), name='order-list-create'),
     path('orders/<int:id>/', OrderDetailView.as_view(), name='order-detail'),
     
+    # Commandes
+    path('ordersitems/', OrderListCreateView.as_view(), name='orderitems-list-create'),
+    path('ordersitems/<int:id>/', OrderDetailView.as_view(), name='orderitems-detail'),
+
     # Litiges
     path('disputes/', DisputeListCreateView.as_view(), name='dispute-list-create'),
     path('disputes/<int:id>/', DisputeDetailView.as_view(), name='dispute-detail'),
@@ -99,6 +109,13 @@ urlpatterns = [
 
     # Endpoint supplémentaire pour le dashboard
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
+
+    # Endpoint supplémentaire pour le rapports
+    path('sales-analytics/', SalesAnalyticsView.as_view(), name='sales-analytics'),
+    path('inventory-status/', InventoryStatusView.as_view(), name='inventory-status'),
+    path('pos-performance/', POSPerformanceView.as_view(), name='pos-performance'),
+    path('category-sales/', CategorySalesView.as_view(), name='category-sales'),
+    path('sales-trend/', SalesTrendView.as_view(), name='sales-trend'),
 ]
 
 # # Créer répertoire et environnement virtuel
