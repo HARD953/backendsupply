@@ -551,7 +551,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
     """
     Serializer pour le modèle Purchase
     """
-    vendor = serializers.PrimaryKeyRelatedField(queryset=MobileVendor.objects.all())
+    vendor = serializers.PrimaryKeyRelatedField(queryset=MobileVendor.objects.all(),required=False)
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
