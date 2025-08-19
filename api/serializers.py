@@ -510,17 +510,48 @@ class MobileVendorSerializer(serializers.ModelSerializer):
         return value
 
 
-
 class VendorActivitySerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
     activity_type_display = serializers.CharField(source='get_activity_type_display', read_only=True)
-    
+    order_items = OrderItemSerializer(source='related_order.items', many=True, read_only=True)
+    total_products = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+
     class Meta:
         model = VendorActivity
         fields = [
             'id', 'vendor', 'vendor_name', 'activity_type', 'activity_type_display',
-            'timestamp', 'location', 'notes', 'related_order', 'created_at'
+            'timestamp', 'location', 'notes', 'related_order', 'order_items',
+            'total_products', 'total_amount', 'created_at'
         ]
+
+    def get_total_products(self, obj):
+        if obj.related_order:
+            return sum(item.quantity for item in obj.related_order.items.all())
+        return 0
+
+    def get_total_amount(self, obj):
+        if obj.related_order:
+            return str(sum(item.total for item in obj.related_order.items.all()))  # Convert Decimal to string for JSON
+        return "0.00"
+
+class VendorActivitySummarySerializer(serializers.ModelSerializer):
+    total_products = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorActivity
+        fields = ['id', 'total_products', 'total_amount']
+
+    def get_total_products(self, obj):
+        if obj.related_order:
+            return sum(item.quantity for item in obj.related_order.items.all())
+        return 0
+
+    def get_total_amount(self, obj):
+        if obj.related_order:
+            return str(sum(item.total for item in obj.related_order.items.all()))  # Convert Decimal to string for JSON
+        return "0.00"
 
 class VendorPerformanceSerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)

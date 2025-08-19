@@ -901,7 +901,7 @@ from .serializers import (
     MobileVendorSerializer,
     VendorActivitySerializer,
     VendorPerformanceSerializer,
-    MobileVendorDetailSerializer
+    MobileVendorDetailSerializer,VendorActivitySummarySerializer
 )
 
 class MobileVendorViewSet(viewsets.ModelViewSet):
@@ -947,7 +947,7 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class VendorActivityViewSet(viewsets.ModelViewSet):
-    queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_items').all()
+    queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_order__items', 'related_order__items__product_variant', 'related_order__items__product_variant__product').all()
     serializer_class = VendorActivitySerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['vendor', 'activity_type', 'related_order']
@@ -956,8 +956,17 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.save()
-        if 'related_items' in self.request.data:
-            instance.related_items.set(self.request.data['related_items'])
+
+class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = VendorActivity.objects.select_related('related_order').prefetch_related('related_order__items').all()
+    serializer_class = VendorActivitySummarySerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['vendor', 'activity_type', 'related_order']
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
 
 class VendorPerformanceViewSet(viewsets.ModelViewSet):
     queryset = VendorPerformance.objects.select_related('vendor').all()
