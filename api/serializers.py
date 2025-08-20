@@ -589,7 +589,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
         model = Purchase
         fields = [
             'id', 'vendor', 'first_name', 'last_name', 'full_name', 
-            'zone', 'amount', 'photo', 'purchase_date', 'base','pushcard_type','latitude','longitude',
+            'zone', 'amount', 'photo', 'purchase_date', 'base','pushcard_type','latitude','longitude','phone',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at','vendor']

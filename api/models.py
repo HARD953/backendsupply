@@ -672,6 +672,7 @@ class Purchase(models.Model):
     pushcard_type = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard")
     latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
     longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
+    phone = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard")
 
     class Meta:
         verbose_name = "Achat"
