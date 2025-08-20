@@ -667,6 +667,12 @@ class Purchase(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
 
+    # ✅ Nouveaux attributs
+    base = models.CharField(max_length=100, blank=True, verbose_name="Base")
+    pushcard_type = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard")
+    latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
+    longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
+
     class Meta:
         verbose_name = "Achat"
         verbose_name_plural = "Achats"
@@ -678,22 +684,20 @@ class Purchase(models.Model):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
-    
+
     def update_performance(self):
         """Méthode pour calculer et mettre à jour la performance du vendeur"""
         purchases = self.purchases.all()
         total_sales = sum(purchase.amount for purchase in purchases)
         purchase_count = purchases.count()
-        
+
         # Exemple de calcul : performance basée sur le montant total vendu
-        # et le nombre de ventes (à personnaliser selon vos besoins)
         if purchase_count > 0:
-            self.performance = (total_sales / purchase_count) * 100  # Exemple de formule
+            self.performance = (total_sales / purchase_count) * 100
         else:
             self.performance = 0.0
-        
-        # Mise à jour de average_daily_sales
+
         days_active = (timezone.now().date() - self.date_joined).days or 1
         self.average_daily_sales = total_sales / days_active
-        
+
         self.save()
