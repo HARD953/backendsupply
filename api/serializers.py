@@ -553,6 +553,28 @@ class VendorActivitySummarySerializer(serializers.ModelSerializer):
             return str(sum(item.total for item in obj.related_order.items.all()))  # Convert Decimal to string for JSON
         return "0.00"
 
+
+from decimal import Decimal
+
+class VendorActivityCumulativeSerializer(serializers.Serializer):
+    total_products = serializers.IntegerField()
+    total_amount = serializers.CharField()
+
+    def get_cumulative_data(self, vendor):
+        activities = VendorActivity.objects.filter(vendor=vendor).select_related('related_order').prefetch_related('related_order__items')
+        total_products = 0
+        total_amount = Decimal('0.00')
+        
+        for activity in activities:
+            if activity.related_order:
+                total_products += sum(item.quantity for item in activity.related_order.items.all())
+                total_amount += sum(item.total for item in activity.related_order.items.all())
+        
+        return {
+            'total_products': total_products,
+            'total_amount': str(total_amount)
+        }
+    
 class VendorPerformanceSerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
     month_formatted = serializers.SerializerMethodField()

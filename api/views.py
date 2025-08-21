@@ -945,7 +945,6 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         vendors = MobileVendor.objects.filter(point_of_sale_id=pos_id)
         serializer = self.get_serializer(vendors, many=True)
         return Response(serializer.data)
-
 class VendorActivityViewSet(viewsets.ModelViewSet):
     queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_order__items', 'related_order__items__product_variant', 'related_order__items__product_variant__product').all()
     serializer_class = VendorActivitySerializer
@@ -967,6 +966,75 @@ class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def perform_update(self, serializer):
         instance = serializer.save()
+
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+import rest_framework.filters as filters
+from .models import VendorActivity, MobileVendor
+from .serializers import VendorActivitySummarySerializer, VendorActivityCumulativeSerializer
+from django.core.exceptions import ObjectDoesNotExist
+
+class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = VendorActivity.objects.select_related('related_order').prefetch_related('related_order__items').all()
+    serializer_class = VendorActivitySummarySerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['activity_type', 'related_order']  # Remove 'vendor' from filterset_fields
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
+
+    def get_queryset(self):
+        """
+        Filter activities for the connected user's MobileVendor instance.
+        """
+        queryset = super().get_queryset()
+        user = self.request.user
+
+        if not user.is_authenticated:
+            return queryset.none()  # Return empty queryset for unauthenticated users
+
+        try:
+            # Assuming user has a OneToOneField to MobileVendor
+            vendor = user.mobile_vendor  # Access the MobileVendor via the related_name
+            return queryset.filter(vendor=vendor)
+        except ObjectDoesNotExist:
+            # If the user has no MobileVendor, return an empty queryset
+            return queryset.none()
+
+    @action(detail=False, methods=['get'], url_path='cumulative')
+    def cumulative(self, request):
+        """
+        Return cumulative totals for the connected user's vendor.
+        """
+        user = request.user
+        if not user.is_authenticated:
+            return Response({"error": "Utilisateur non connecté"}, status=401)
+
+        try:
+            vendor = user.mobile_vendor
+        except ObjectDoesNotExist:
+            return Response({"error": "Aucun vendeur associé à cet utilisateur"}, status=400)
+
+        serializer = VendorActivityCumulativeSerializer(data=self.get_cumulative_data(vendor))
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data)
+
+    def get_cumulative_data(self, vendor):
+        """
+        Calculate cumulative totals for the given vendor.
+        """
+        return VendorActivityCumulativeSerializer().get_cumulative_data(vendor)
+
+    def perform_update(self, serializer):
+        """
+        Optional: If updates are needed, ensure proper validation.
+        """
+        instance = serializer.save()
+
+
+
+
 
 class VendorPerformanceViewSet(viewsets.ModelViewSet):
     queryset = VendorPerformance.objects.select_related('vendor').all()
