@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Category, Supplier, PointOfSale, Permission, Role, UserProfile,
     Product, ProductFormat, ProductVariant, ProductImage, StockMovement, 
-    Order, OrderItem, Dispute, Token, TokenTransaction, Notification
+    Order, OrderItem, Dispute, Token, TokenTransaction, Notification, Sale
 )
 from django.contrib.auth.models import User
 from django.db.models import Count, Sum
@@ -623,3 +623,31 @@ class PurchaseSerializer(serializers.ModelSerializer):
         if data['amount'] < 0:
             raise serializers.ValidationError({"amount": "Le montant ne peut pas être négatif."})
         return data
+    
+
+# serializers.py
+from .models import Sale
+
+class SaleSerializer(serializers.ModelSerializer):
+    product_variant_name = serializers.CharField(source='product_variant.product.name', read_only=True)
+    format = serializers.CharField(source='product_variant.format.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.full_name', read_only=True)
+    vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
+    
+    class Meta:
+        model = Sale
+        fields = [
+            'id', 
+            'product_variant', 
+            'customer', 
+            'quantity', 
+            'total_amount',
+            'created_at',
+            'updated_at',
+            'vendor',
+            'product_variant_name',
+            'format',
+            'customer_name',
+            'vendor_name'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'vendor']

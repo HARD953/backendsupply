@@ -14,7 +14,7 @@ from .views import (
     TokenTransactionListCreateView, TokenTransactionDetailView,
     NotificationListCreateView, NotificationDetailView,
     DashboardView, StockOverviewView,
-    ProductFormatListCreateView,ProductFormatDetailView,
+    ProductFormatListCreateView,ProductFormatDetailView, SaleViewSet,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 
 )
@@ -35,6 +35,7 @@ router.register(r'vendor-activities', VendorActivityViewSet, basename='vendor-ac
 router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vendor-performance')
 router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
+router.register(r'sales', SaleViewSet, basename='sale')
 
 urlpatterns = [
     # Dashboard

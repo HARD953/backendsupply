@@ -1033,9 +1033,6 @@ class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
         instance = serializer.save()
 
 
-
-
-
 class VendorPerformanceViewSet(viewsets.ModelViewSet):
     queryset = VendorPerformance.objects.select_related('vendor').all()
     serializer_class = VendorPerformanceSerializer
@@ -1079,3 +1076,161 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         if vendor_id:
             queryset = queryset.filter(vendor_id=vendor_id)
         return queryset.order_by('-purchase_date')
+    
+
+# views.py
+from django.shortcuts import get_object_or_404
+from .models import Sale
+from .serializers import SaleSerializer
+from django.db.models import Sum, Count
+from django.utils import timezone
+from datetime import datetime
+from rest_framework import status
+
+class SaleViewSet(viewsets.ModelViewSet):
+    serializer_class = SaleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Retourne uniquement les ventes de l'utilisateur connecté
+        """
+        return Sale.objects.filter(vendor=self.request.user.id)
+
+    def perform_create(self, serializer):
+        """
+        Crée une vente et met à jour le stock
+        """
+        # Get the MobileVendor instance from the authenticated user
+        try:
+            # Access the MobileVendor instance through the OneToOne relationship
+            vendor_instance = self.request.user.mobile_vendor
+        except AttributeError:
+            # If user doesn't have mobile_vendor attribute
+            raise serializers.ValidationError({"error": "Utilisateur non associé à un vendeur mobile"})
+        except MobileVendor.DoesNotExist:
+            # If the MobileVendor instance doesn't exist for this user
+            raise serializers.ValidationError({"error": "Profil vendeur mobile non trouvé pour cet utilisateur"})
+        
+        # Save the sale with the MobileVendor instance
+        sale = serializer.save(vendor=vendor_instance)
+        
+        # Mettre à jour le stock du produit
+        product_variant = sale.product_variant
+        if product_variant.current_stock >= sale.quantity:
+            product_variant.current_stock -= sale.quantity
+            product_variant.save()
+        else:
+            # Annuler la vente si stock insuffisant
+            sale.delete()
+            raise serializers.ValidationError({"error": "Stock insuffisant"})
+
+    def perform_update(self, serializer):
+        """
+        Met à jour une vente et ajuste le stock
+        """
+        # Sauvegarder l'ancienne quantité pour ajuster le stock
+        old_quantity = self.get_object().quantity
+        
+        # Mettre à jour la vente
+        updated_sale = serializer.save()
+        
+        # Ajuster le stock du produit
+        product_variant = updated_sale.product_variant
+        
+        # Calculer la différence de quantité
+        quantity_diff = old_quantity - updated_sale.quantity
+        
+        # Mettre à jour le stock
+        if quantity_diff != 0:
+            product_variant.current_stock += quantity_diff
+            
+            # Vérifier que le stock ne devient pas négatif
+            if product_variant.current_stock < 0:
+                raise serializers.ValidationError(
+                    {"error": "La modification entraînerait un stock négatif"}
+                )
+            
+            product_variant.save()
+
+    def perform_destroy(self, instance):
+        """
+        Supprime une vente et restaure le stock
+        """
+        # Restaurer le stock avant de supprimer la vente
+        product_variant = instance.product_variant
+        product_variant.current_stock += instance.quantity
+        product_variant.save()
+        
+        instance.delete()
+
+    @action(detail=False, methods=['get'], url_path='customer/(?P<customer_id>[^/.]+)')
+    def by_customer(self, request, customer_id=None):
+        """
+        Retourne les ventes pour un client spécifique
+        """
+        sales = self.get_queryset().filter(customer_id=customer_id)
+        serializer = self.get_serializer(sales, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='product/(?P<product_variant_id>[^/.]+)')
+    def by_product(self, request, product_variant_id=None):
+        """
+        Retourne les ventes pour une variante de produit spécifique
+        """
+        sales = self.get_queryset().filter(product_variant_id=product_variant_id)
+        serializer = self.get_serializer(sales, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """
+        Retourne un résumé des ventes de l'utilisateur connecté
+        Permet de filtrer par date (format: YYYY-MM-DD), par défaut date d'aujourd'hui
+        """
+        # Récupérer le queryset de base (ventes de l'utilisateur connecté)
+        queryset = self.get_queryset()
+        
+        # Récupérer la date depuis les paramètres de requête
+        date_param = request.query_params.get('date', None)
+        
+        if date_param:
+            try:
+                # Convertir la date string en objet date
+                target_date = datetime.strptime(date_param, '%Y-%m-%d').date()
+                # Filtrer les ventes pour la date spécifiée
+                queryset = queryset.filter(created_at__date=target_date)
+            except ValueError:
+                return Response(
+                    {"error": "Format de date invalide. Utilisez YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Par défaut, utiliser la date d'aujourd'hui
+            today = timezone.now().date()
+            queryset = queryset.filter(created_at__date=today)
+        
+        # Calculer les statistiques
+        total_sales = queryset.count()
+        total_revenue = queryset.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_quantity = queryset.aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Calculer le nombre de clients uniques
+        unique_customers = queryset.values('customer').distinct().count()
+        
+        # Produits les plus vendus (top 5)
+        top_products = (
+            queryset.values('product_variant__product__name')
+            .annotate(total_quantity=Sum('quantity'), total_revenue=Sum('total_amount'))
+            .order_by('-total_quantity')[:5]
+        )
+        
+        return Response({
+            'date': date_param or timezone.now().date().isoformat(),
+            'total_sales': total_sales,
+            'total_revenue': float(total_revenue),
+            'total_quantity': total_quantity,
+            'unique_customers': unique_customers,
+            'average_sale_amount': float(total_revenue / total_sales) if total_sales > 0 else 0,
+            'top_products': list(top_products)
+        })

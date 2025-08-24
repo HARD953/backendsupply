@@ -613,7 +613,6 @@ class VendorActivity(models.Model):
     def __str__(self):
         return f"{self.vendor.full_name} - {self.get_activity_type_display()}"
 
-
 class VendorPerformance(models.Model):
     """
     Modèle pour enregistrer les performances mensuelles des vendeurs
@@ -702,3 +701,31 @@ class Purchase(models.Model):
         self.average_daily_sales = total_sales / days_active
 
         self.save()
+
+# models.py
+class Sale(models.Model):
+    product_variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name='sales'
+    )
+    customer = models.ForeignKey(
+        Purchase,
+        on_delete=models.CASCADE,
+        related_name='purchases'
+    )
+    quantity = models.PositiveIntegerField()
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    vendor = models.ForeignKey(
+        MobileVendor,
+        on_delete=models.CASCADE,
+        related_name='mobile_vendors'
+    )
+    class Meta:
+        db_table = 'sales'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Vente #{self.id} - {self.product_variant} à {self.customer}"
