@@ -553,7 +553,6 @@ class MobileVendor(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-
     class Meta:
         verbose_name = "Vendeur ambulant"
         verbose_name_plural = "Vendeurs ambulants"
@@ -604,7 +603,8 @@ class VendorActivity(models.Model):
         related_name='vendor_activities'
     )
     created_at = models.DateTimeField(auto_now_add=True)
-
+    quantity_assignes = models.PositiveIntegerField()
+    quantity_sales = models.PositiveIntegerField()
     class Meta:
         verbose_name = "Activité de vendeur"
         verbose_name_plural = "Activités des vendeurs"

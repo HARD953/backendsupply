@@ -1224,6 +1224,22 @@ class SaleViewSet(viewsets.ModelViewSet):
             .annotate(total_quantity=Sum('quantity'), total_revenue=Sum('total_amount'))
             .order_by('-total_quantity')[:5]
         )
+
+        purchases = Purchase.objects.filter(vendor=self.request.user.mobile_vendor)
+        purchase_count = purchases.count()
+        sales = Sale.objects.filter(vendor=self.request.user.mobile_vendor)
+        sales_count = sales.count()
+
+           # Calculer les sommes
+        total_amounts = sales.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_quantitys = sales.aggregate(total=Sum('quantity'))['total'] or 0
+
+            # Zones les plus actives (top 3)
+        top_zones = (
+            purchases.values('zone')
+            .annotate(count=Count('id'), revenue=Sum('amount'))
+            .order_by('-count')[:3]
+        )
         
         return Response({
             'date': date_param or timezone.now().date().isoformat(),
@@ -1232,5 +1248,10 @@ class SaleViewSet(viewsets.ModelViewSet):
             'total_quantity': total_quantity,
             'unique_customers': unique_customers,
             'average_sale_amount': float(total_revenue / total_sales) if total_sales > 0 else 0,
-            'top_products': list(top_products)
+            'top_products': list(top_products),
+            'top_zones': list(top_zones),
+            'purchase_count': purchase_count,
+            'sales_count':sales_count,
+            'total_amounts':total_amounts,
+            'total_quantitys':total_quantitys
         })

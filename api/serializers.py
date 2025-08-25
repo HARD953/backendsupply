@@ -521,7 +521,7 @@ class VendorActivitySerializer(serializers.ModelSerializer):
         model = VendorActivity
         fields = [
             'id', 'vendor', 'vendor_name', 'activity_type', 'activity_type_display',
-            'timestamp', 'location', 'notes', 'related_order', 'order_items',
+            'timestamp', 'location', 'notes', 'related_order', 'order_items','quantity_assignes','quantity_sales',
             'total_products', 'total_amount', 'created_at'
         ]
 
