@@ -975,6 +975,7 @@ import rest_framework.filters as filters
 from .models import VendorActivity, MobileVendor
 from .serializers import VendorActivitySummarySerializer, VendorActivityCumulativeSerializer
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models.functions import ExtractYear, ExtractMonth  # <-- Ajoutez cette ligne
 
 class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VendorActivity.objects.select_related('related_order').prefetch_related('related_order__items').all()
@@ -1046,6 +1047,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from .models import Purchase, MobileVendor
 from .serializers import PurchaseSerializer
+from datetime import datetime, date, timedelta
 
 class PurchaseViewSet(viewsets.ModelViewSet):
     """
@@ -1181,15 +1183,39 @@ class SaleViewSet(viewsets.ModelViewSet):
         sales = self.get_queryset().filter(product_variant_id=product_variant_id)
         serializer = self.get_serializer(sales, many=True)
         return Response(serializer.data)
-
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """
-        Retourne un résumé des ventes de l'utilisateur connecté
-        Permet de filtrer par date (format: YYYY-MM-DD), par défaut date d'aujourd'hui
+        Retourne un résumé des ventes
+        Permet de filtrer par date (format: YYYY-MM-DD) et par vendeur (vendor_id)
+        Par défaut: date d'aujourd'hui et utilisateur connecté
         """
-        # Récupérer le queryset de base (ventes de l'utilisateur connecté)
-        queryset = self.get_queryset()
+        # Récupérer l'ID du vendeur depuis les paramètres de requête
+        vendor_id = request.query_params.get('vendor_id', None)
+        
+        # Déterminer quel vendeur utiliser
+        if vendor_id:
+            try:
+                vendor = MobileVendor.objects.get(id=vendor_id)
+                # Vérifier les permissions si nécessaire
+                # if not request.user.has_perm('app.view_vendor_summary', vendor):
+                #     return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+            except MobileVendor.DoesNotExist:
+                return Response(
+                    {"error": "Vendeur non trouvé"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except ValueError:
+                return Response(
+                    {"error": "ID de vendeur invalide"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Utiliser l'utilisateur connecté par défaut
+            vendor = self.request.user.mobile_vendor
+        
+        # Récupérer le queryset de base filtré par vendeur
+        queryset = Sale.objects.filter(vendor=vendor)
         
         # Récupérer la date depuis les paramètres de requête
         date_param = request.query_params.get('date', None)
@@ -1225,16 +1251,17 @@ class SaleViewSet(viewsets.ModelViewSet):
             .order_by('-total_quantity')[:5]
         )
 
-        purchases = Purchase.objects.filter(vendor=self.request.user.mobile_vendor)
+        # CORRECTION: Utiliser l'objet vendor au lieu de vendor_id pour les filtres
+        purchases = Purchase.objects.filter(vendor=vendor)
+        sales = Sale.objects.filter(vendor=vendor)
         purchase_count = purchases.count()
-        sales = Sale.objects.filter(vendor=self.request.user.mobile_vendor)
-        sales_count = sales.count()
+        sales_count = sales.count()  # On peut réutiliser le queryset existant
 
-           # Calculer les sommes
+        # CORRECTION: Utiliser le queryset existant au lieu de refaire le filtre
         total_amounts = sales.aggregate(total=Sum('total_amount'))['total'] or 0
         total_quantitys = sales.aggregate(total=Sum('quantity'))['total'] or 0
 
-            # Zones les plus actives (top 3)
+        # Zones les plus actives (top 3)
         top_zones = (
             purchases.values('zone')
             .annotate(count=Count('id'), revenue=Sum('amount'))
@@ -1243,6 +1270,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         
         return Response({
             'date': date_param or timezone.now().date().isoformat(),
+            'vendor_id': vendor.id,
+            'vendor_name': vendor.full_name,
             'total_sales': total_sales,
             'total_revenue': float(total_revenue),
             'total_quantity': total_quantity,
@@ -1251,7 +1280,163 @@ class SaleViewSet(viewsets.ModelViewSet):
             'top_products': list(top_products),
             'top_zones': list(top_zones),
             'purchase_count': purchase_count,
-            'sales_count':sales_count,
-            'total_amounts':total_amounts,
-            'total_quantitys':total_quantitys
+            'sales_count': sales_count,
+            'total_amounts': float(total_amounts),
+            'total_quantitys': total_quantitys
         })
+    @action(detail=False, methods=['get'])
+    def performance(self, request):
+        """
+        Retourne les performances mensuelles avec:
+        - Nombre de clients par mois
+        - Montant total vendu par mois
+        - Nombre de produits vendus par mois
+        - Calculs de performance mensuels
+        Permet de filtrer par vendeur (vendor_id) et par période
+        """
+        # Récupérer l'ID du vendeur depuis les paramètres de requête
+        vendor_id = request.query_params.get('vendor_id', None)
+        
+        # Déterminer quel vendeur utiliser
+        if vendor_id:
+            try:
+                vendor = MobileVendor.objects.get(id=vendor_id)
+            except MobileVendor.DoesNotExist:
+                return Response(
+                    {"error": "Vendeur non trouvé"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            except ValueError:
+                return Response(
+                    {"error": "ID de vendeur invalide"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # Utiliser l'utilisateur connecté par défaut
+            vendor = self.request.user.mobile_vendor
+        
+        # Récupérer les dates de début et fin depuis les paramètres de requête
+        start_date_param = request.query_params.get('start_date')
+        end_date_param = request.query_params.get('end_date')
+        
+        # Définir la période par défaut (6 derniers mois)
+        if not start_date_param or not end_date_param:
+            end_date = timezone.now().date()
+            start_date = end_date - timedelta(days=180)  # 6 mois
+        else:
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {"error": "Format de date invalide. Utilisez YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Récupérer le queryset de base filtré par vendeur et période
+        sales_queryset = Sale.objects.filter(
+            vendor=vendor,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        )
+        
+        # Agrégation des données par mois
+        monthly_data = (
+            sales_queryset
+            .annotate(
+                year=ExtractYear('created_at'),
+                month=ExtractMonth('created_at')
+            )
+            .values('year', 'month')
+            .annotate(
+                total_customers=Count('customer', distinct=True),
+                total_revenue=Sum('total_amount'),
+                total_products_sold=Sum('quantity'),
+                total_sales=Count('id')
+            )
+            .order_by('year', 'month')
+        )
+        
+        # Calcul des indicateurs de performance mensuels
+        performance_data = []
+        for data in monthly_data:
+            month_date = date(data['year'], data['month'], 1)
+            month_name = month_date.strftime('%B %Y')
+            
+            # Calcul de la performance (ex: ratio revenu/vente)
+            performance_ratio = (
+                data['total_revenue'] / data['total_sales'] 
+                if data['total_sales'] > 0 else 0
+            )
+            
+            # Calcul du panier moyen
+            average_basket = (
+                data['total_revenue'] / data['total_customers'] 
+                if data['total_customers'] > 0 else 0
+            )
+            
+            performance_data.append({
+                'month': month_name,
+                'year': data['year'],
+                'month_number': data['month'],
+                'total_customers': data['total_customers'],
+                'total_revenue': float(data['total_revenue'] or 0),
+                'total_products_sold': data['total_products_sold'] or 0,
+                'total_sales': data['total_sales'],
+                'performance_ratio': float(performance_ratio),
+                'average_basket': float(average_basket),
+                'revenue_per_customer': (
+                    float(data['total_revenue'] / data['total_customers']) 
+                    if data['total_customers'] > 0 else 0
+                )
+            })
+        
+        # Calcul des totaux globaux
+        total_summary = {
+            'period_start': start_date.isoformat(),
+            'period_end': end_date.isoformat(),
+            'total_customers': sum(item['total_customers'] for item in performance_data),
+            'total_revenue': sum(item['total_revenue'] for item in performance_data),
+            'total_products_sold': sum(item['total_products_sold'] for item in performance_data),
+            'total_sales': sum(item['total_sales'] for item in performance_data),
+            'overall_performance': (
+                sum(item['total_revenue'] for item in performance_data) / 
+                sum(item['total_sales'] for item in performance_data) 
+                if sum(item['total_sales'] for item in performance_data) > 0 else 0
+            )
+        }
+        
+        return Response({
+            'vendor_id': vendor.id,
+            'vendor_name': vendor.full_name,
+            'period': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat()
+            },
+            'monthly_performance': performance_data,
+            'summary': total_summary,
+            'performance_indicators': {
+                'best_month': max(performance_data, key=lambda x: x['total_revenue']) if performance_data else None,
+                'worst_month': min(performance_data, key=lambda x: x['total_revenue']) if performance_data else None,
+                'growth_rate': self.calculate_growth_rate(performance_data) if len(performance_data) >= 2 else 0
+            }
+        })
+
+    def calculate_growth_rate(self, performance_data):
+        """
+        Calcule le taux de croissance entre le premier et le dernier mois
+        """
+        if len(performance_data) < 2:
+            return 0
+        
+        # Trier par année et mois pour être sûr de l'ordre
+        sorted_data = sorted(performance_data, key=lambda x: (x['year'], x['month_number']))
+        
+        first_month = sorted_data[0]['total_revenue']
+        last_month = sorted_data[-1]['total_revenue']
+        
+        if first_month == 0:
+            return 0
+        
+        growth_rate = ((last_month - first_month) / first_month) * 100
+        return float(growth_rate)
