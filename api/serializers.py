@@ -275,15 +275,11 @@ class OrderSerializer(serializers.ModelSerializer):
         source='point_of_sale',
         read_only=True
     )
-    customer_details = UserProfileSerializer(
-        source='customer',
-        read_only=True
-    )
 
     class Meta:
         model = Order
         fields = [
-            'id', 'customer', 'customer_details', 'point_of_sale', 
+            'id','point_of_sale', 
             'point_of_sale_details', 'status', 'total', 'date', 
             'delivery_date', 'priority', 'notes', 'created_at', 
             'updated_at', 'items'
