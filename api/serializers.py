@@ -189,16 +189,16 @@ class ProductSerializer(serializers.ModelSerializer):
     )
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    format_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
-    )
+    # format_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=ProductFormat.objects.all(), source='format', write_only=True, allow_null=True
+    # )
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'category', 'category_id', 'sku', 'supplier', 'supplier_id',
             'point_of_sale', 'point_of_sale_id', 'description', 'status', 'main_image',
-            'last_updated', 'created_at', 'variants', 'images', 'format_id'
+            'last_updated', 'created_at', 'variants', 'images'
         ]
 
 class SimpleProductSerializer(serializers.ModelSerializer):
