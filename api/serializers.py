@@ -224,6 +224,8 @@ class StockMovementSerializer(serializers.ModelSerializer):
             'type', 'quantity', 'date', 'reason', 'user', 'user_id', 'created_at'
         ]
 
+        
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantSerializer(read_only=True)
     product_variant_id = serializers.PrimaryKeyRelatedField(
@@ -282,9 +284,9 @@ class OrderSerializer(serializers.ModelSerializer):
             'id','point_of_sale', 
             'point_of_sale_details', 'status', 'total', 'date', 
             'delivery_date', 'priority', 'notes', 'created_at', 
-            'updated_at', 'items'
+            'updated_at', 'items','customer'
         ]
-        read_only_fields = ['status', 'total', 'created_at', 'updated_at']
+        read_only_fields = ['status', 'total', 'created_at', 'updated_at','customer']
 
     def validate(self, data):
         items = data.get('items', [])

@@ -70,7 +70,7 @@ class SupplierListCreateView(generics.ListCreateAPIView):
     search_fields = ['name', 'email']
 
 class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Supplier.objects.all()
+    queryset = Supplier.objects.all() 
     serializer_class = SupplierSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
@@ -356,6 +356,9 @@ class OrderListCreateView(generics.ListCreateAPIView):
         ).select_related('point_of_sale').prefetch_related('items')
 
     def perform_create(self, serializer):
+        # Récupérer le profil de l'utilisateur connecté comme customer
+        user_profile = self.request.user.id
+        
         # Récupérer le point de vente depuis les données validées
         point_of_sale = serializer.validated_data.get('point_of_sale')
         
@@ -374,7 +377,8 @@ class OrderListCreateView(generics.ListCreateAPIView):
                 point_of_sale = first_item['product_variant'].product.point_of_sale
                 serializer.validated_data['point_of_sale'] = point_of_sale
         
-        serializer.save()
+        # Sauvegarder avec le customer = profil de l'utilisateur connecté
+        serializer.save(customer=user_profile)
 
 class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = OrderSerializer
