@@ -1573,7 +1573,7 @@ def get_customer_sales_simple(request):
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
     end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
     
-    # Requête optimisée avec aggregation
+
     purchases = Purchase.objects.filter(
         vendor=vendor,
         purchase_date__gte=start_date,
