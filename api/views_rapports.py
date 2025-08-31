@@ -164,3 +164,5 @@ class SalesTrendView(APIView):
         ).order_by('day')
         
         return Response(list(daily_sales))
+    
+

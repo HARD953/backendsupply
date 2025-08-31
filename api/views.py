@@ -357,7 +357,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Récupérer le profil de l'utilisateur connecté comme customer
-        user_profile = self.request.user.profile
+        user_profile = self.request.user.id
         
         # Récupérer le point de vente depuis les données validées
         point_of_sale = serializer.validated_data.get('point_of_sale')
@@ -1444,3 +1444,166 @@ class SaleViewSet(viewsets.ModelViewSet):
         
         growth_rate = ((last_month - first_month) / first_month) * 100
         return float(growth_rate)
+    
+from django.db.models import Sum, F, Count
+from django.utils import timezone
+from datetime import datetime
+from django.http import JsonResponse
+from .models import Purchase, Sale
+from django.conf import settings
+
+def get_customer_sales(request):
+    # Récupérer les dates de début et fin depuis la requête
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    
+    # Convertir les dates en objets datetime
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
+    
+    # Ajouter le temps à la fin de la journée pour end_date
+    end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+    
+    # Récupérer les achats dans la période spécifiée
+    purchases = Purchase.objects.filter(
+        purchase_date__gte=start_date,
+        purchase_date__lte=end_date
+    ).prefetch_related('purchases')  # Prefetch related sales
+    
+    customer_data = []
+    
+    for purchase in purchases:
+        # Récupérer toutes les ventes associées à cet achat
+        sales = purchase.purchases.all()
+        
+        # Calculer le total des ventes pour ce client
+        total_sales_amount = sales.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_quantity = sales.aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Générer l'URL complète de la photo si elle existe
+        photo_url = None
+        if purchase.photo:
+            photo_url = request.build_absolute_uri(purchase.photo.url)
+        
+        customer_data.append({
+            'id': purchase.id,
+            'full_name': purchase.full_name,
+            'phone': purchase.phone,
+            'zone': purchase.zone,
+            'base': purchase.base,
+            'pushcard_type': purchase.pushcard_type,
+            'latitude': purchase.latitude,
+            'longitude': purchase.longitude,
+            'purchase_date': purchase.purchase_date.isoformat(),
+            'photo_url': photo_url,  # ✅ Ajout de l'URL de la photo
+            'total_sales_amount': float(total_sales_amount),
+            'total_quantity': total_quantity,
+            'sales_count': sales.count(),
+            'sales_details': [
+                {
+                    'product': sale.product_variant.product.name if sale.product_variant and sale.product_variant.product else 'N/A',
+                    'variant': sale.product_variant.product if sale.product_variant else 'N/A',
+                    'quantity': sale.quantity,
+                    'amount': float(sale.total_amount),
+                    'date': sale.created_at.isoformat()
+                }
+                for sale in sales
+            ]
+        })
+    
+    return JsonResponse({
+        'period': {
+            'start_date': start_date.strftime('%Y-%m-%d'),
+            'end_date': end_date.strftime('%Y-%m-%d')
+        },
+        'customers': customer_data,
+        'total_customers': len(customer_data),
+        'grand_total_sales': sum(customer['total_sales_amount'] for customer in customer_data)
+    })
+
+
+def get_customer_sales_optimized(request):
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    
+    # Conversion des dates
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
+    end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+    
+    # Requête optimisée avec aggregation
+    purchases = Purchase.objects.filter(
+        purchase_date__gte=start_date,
+        purchase_date__lte=end_date
+    ).annotate(
+        total_sales_amount=Sum('purchases__total_amount'),
+        total_quantity=Sum('purchases__quantity'),
+        sales_count=Count('purchases')
+    ).select_related('vendor').prefetch_related('purchases__product_variant__product')
+    
+    customer_data = []
+    
+    for purchase in purchases:
+        customer_data.append({
+            'id': purchase.id,
+            'full_name': purchase.full_name,
+            'phone': purchase.phone,
+            'zone': purchase.zone,
+            'base': purchase.base,
+            'pushcard_type': purchase.pushcard_type,
+            'latitude': purchase.latitude,
+            'longitude': purchase.longitude,
+            'purchase_date': purchase.purchase_date.isoformat(),
+            'total_sales_amount': float(purchase.total_sales_amount or 0),
+            'total_quantity': purchase.total_quantity or 0,
+            'sales_count': purchase.sales_count,
+            'vendor_name': f"{purchase.vendor.first_name} {purchase.vendor.last_name}" if purchase.vendor else 'N/A'
+        })
+    
+    return JsonResponse({'customers': customer_data})
+
+
+def get_customer_sales_simple(request):
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    
+    # Conversion des dates
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
+    end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+    
+    # Requête optimisée avec aggregation
+    purchases = Purchase.objects.filter(
+        purchase_date__gte=start_date,
+        purchase_date__lte=end_date
+    ).annotate(
+        total_sales_amount=Sum('purchases__total_amount'),
+        total_quantity=Sum('purchases__quantity'),
+        sales_count=Count('purchases')
+    )
+    
+    customer_data = []
+    
+    for purchase in purchases:
+        # Générer l'URL complète de la photo
+        photo_url = None
+        if purchase.photo:
+            photo_url = request.build_absolute_uri(purchase.photo.url)
+        
+        customer_data.append({
+            'id': purchase.id,
+            'full_name': purchase.full_name,
+            'phone': str(purchase.phone) if purchase.phone else None,
+            'zone': str(purchase.zone) if purchase.zone else None,
+            'base': str(purchase.base) if purchase.base else None,
+            'pushcard_type': str(purchase.pushcard_type) if purchase.pushcard_type else None,
+            'latitude': float(purchase.latitude) if purchase.latitude else None,
+            'longitude': float(purchase.longitude) if purchase.longitude else None,
+            'purchase_date': purchase.purchase_date.isoformat() if purchase.purchase_date else None,
+            'photo_url': photo_url,
+            'total_sales_amount': float(purchase.total_sales_amount or 0),
+            'total_quantity': purchase.total_quantity or 0,
+            'sales_count': purchase.sales_count or 0
+        })
+    
+    return JsonResponse({'customers': customer_data})

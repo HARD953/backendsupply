@@ -26,6 +26,10 @@ from .views_rapports import (
     SalesTrendView
 )
 
+# urls.py
+from django.urls import path
+from . import views
+
 from rest_framework.routers import DefaultRouter
 # Création du routeur
 router = DefaultRouter()
@@ -119,6 +123,10 @@ urlpatterns = [
     path('pos-performance/', POSPerformanceView.as_view(), name='pos-performance'),
     path('category-sales/', CategorySalesView.as_view(), name='category-sales'),
     path('sales-trend/', SalesTrendView.as_view(), name='sales-trend'),
+
+    path('customer-sales/', views.get_customer_sales, name='customer-sales'),
+    path('customer-sales-optimized/', views.get_customer_sales_optimized, name='customer-sales-optimized'),
+    path('carte/', views.get_customer_sales_simple, name='customer-sales-sales'),
 ]
 
 # # Créer répertoire et environnement virtuel
