@@ -13,7 +13,7 @@ from .serializers import (
     OrderSerializer, OrderItemSerializer, DisputeSerializer, 
     TokenSerializer, TokenTransactionSerializer,
     NotificationSerializer, DashboardSerializer, StockOverviewSerializer,
-    ProductFormatSerializer
+    ProductFormatSerializer,PointOfSaleSerializers
 )
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -1564,6 +1564,7 @@ def get_customer_sales_optimized(request):
 
 
 def get_customer_sales_simple(request):
+    vendor = request.user.id
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
     
@@ -1574,6 +1575,7 @@ def get_customer_sales_simple(request):
     
     # Requête optimisée avec aggregation
     purchases = Purchase.objects.filter(
+        vendor=vendor,
         purchase_date__gte=start_date,
         purchase_date__lte=end_date
     ).annotate(
@@ -1607,3 +1609,93 @@ def get_customer_sales_simple(request):
         })
     
     return JsonResponse({'customers': customer_data})
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Sum, Count, Q
+from django.utils import timezone
+from datetime import datetime
+from .models import PointOfSale, Order
+from django.http import JsonResponse
+
+@api_view(['GET'])
+def get_point_of_sale_orders_simple(request):
+    """
+    Version simplifiée sans les détails des items de commande
+    Retourne les commandes des points de vente pour l'utilisateur connecté
+    """
+    try:
+        user = request.user
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+        
+        # Conversion des dates
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
+        
+        # Récupérer les points de vente de l'utilisateur avec les statistiques de commandes
+        points_of_sale = PointOfSale.objects.filter(
+            user=user
+        ).prefetch_related(
+            'orders__items'
+        ).annotate(
+            total_orders_count=Count('orders', filter=Q(orders__date__gte=start_date, orders__date__lte=end_date)),
+            total_revenue=Sum('orders__total', filter=Q(orders__date__gte=start_date, orders__date__lte=end_date)),
+            total_items=Sum('orders__items__quantity', filter=Q(orders__date__gte=start_date, orders__date__lte=end_date))
+        )
+        
+        pos_data = []
+        
+        for pos in points_of_sale:
+            # Générer l'URL de l'avatar
+            avatar_url = None
+            if pos.avatar:
+                avatar_url = request.build_absolute_uri(pos.avatar.url)
+            
+            pos_data.append({
+                'id': pos.id,
+                'name': pos.name,
+                'owner': pos.owner,
+                'type': pos.type,
+                'type_display': pos.get_type_display(),
+                'status': pos.status,
+                'status_display': pos.get_status_display(),
+                'phone': pos.phone,
+                'email': pos.email,
+                'address': pos.address,
+                'district': pos.district,
+                'region': pos.region,
+                'commune': pos.commune,
+                'latitude': float(pos.latitude) if pos.latitude else None,
+                'longitude': float(pos.longitude) if pos.longitude else None,
+                'avatar_url': avatar_url,
+                'turnover': float(pos.turnover),
+                'monthly_orders': pos.monthly_orders,
+                'evaluation_score': float(pos.evaluation_score),
+                'registration_date': pos.registration_date.isoformat() if pos.registration_date else None,
+                'orders_summary': {
+                    'total_orders': pos.total_orders_count or 0,
+                    'total_revenue': float(pos.total_revenue or 0),
+                    'total_items': pos.total_items or 0
+                }
+            })
+        
+        return Response({
+            'period': {
+                'start_date': start_date.strftime('%Y-%m-%d'),
+                'end_date': end_date.strftime('%Y-%m-%d')
+            },
+            'points_of_sale': pos_data
+        })
+        
+    except ValueError as e:
+        return Response(
+            {'error': 'Format de date invalide. Utilisez YYYY-MM-DD'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Erreur interne: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

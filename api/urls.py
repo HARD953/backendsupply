@@ -41,6 +41,8 @@ router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
 router.register(r'sales', SaleViewSet, basename='sale')
 
+
+
 urlpatterns = [
     # Dashboard
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
@@ -127,6 +129,7 @@ urlpatterns = [
     path('customer-sales/', views.get_customer_sales, name='customer-sales'),
     path('customer-sales-optimized/', views.get_customer_sales_optimized, name='customer-sales-optimized'),
     path('carte/', views.get_customer_sales_simple, name='customer-sales-sales'),
+    path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
 ]
 
 # # Créer répertoire et environnement virtuel

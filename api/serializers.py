@@ -649,3 +649,16 @@ class SaleSerializer(serializers.ModelSerializer):
             'vendor_name'
         ]
         read_only_fields = ['created_at', 'updated_at', 'vendor']
+
+
+class PointOfSaleSerializers(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True, default=serializers.CurrentUserDefault())
+    orders_summary = serializers.DictField()
+    orders = OrderSerializer(many=True, read_only=True)
+    class Meta:
+        model = PointOfSale
+        fields = [
+            'id', 'name', 'owner', 'phone', 'email', 'address', 'latitude', 'longitude',
+            'district', 'region', 'commune', 'type', 'status', 'registration_date',
+            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar','orders_summary','orders'
+        ]
