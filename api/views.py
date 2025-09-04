@@ -22,6 +22,7 @@ from django.db.models.functions import Coalesce
 from datetime import datetime, timedelta
 from django.utils import timezone
 from decimal import Decimal
+from rest_framework import serializers
 
 # Views existantes (inchangées sauf indication)
 class CategoryListCreateView(generics.ListCreateAPIView):
