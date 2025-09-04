@@ -64,7 +64,7 @@ class PointOfSaleNameSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer()
-    role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), allow_null=True)
+    role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all(), allow_null=True, required=True)
     points_of_sale = PointOfSaleNameSerializer(many=True, read_only=True)
     points_of_sale_ids = serializers.PrimaryKeyRelatedField(
         queryset=PointOfSale.objects.all(),
@@ -85,42 +85,88 @@ class UserProfileSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'last_login': {'read_only': True},
             'establishment_registration_date': {'read_only': True},
+            'establishment_name': {'required': True},
+            'establishment_address': {'required': True}, 
+            'establishment_type': {'required': True},
         }
 
     def to_internal_value(self, data):
         """
         Convertit les données du client en données internes.
-        Gère le cas où les données utilisateur sont envoyées séparément.
+        Gère le cas où les données utilisateur sont envoyées comme JSON stringifié.
         """
-        # Si les données utilisateur sont envoyées comme des champs séparés
-        if isinstance(data, dict) and 'user' not in data:
-            # Construire l'objet user à partir des champs séparés
-            user_data = {}
-            for field in ['username', 'email', 'first_name', 'last_name', 'password']:
-                if field in data:
-                    user_data[field] = data.pop(field)
-            
-            if user_data:
-                data['user'] = user_data
+        # Créer une copie des données pour éviter de modifier l'original
+        if hasattr(data, '_mutable'):
+            data._mutable = True
         
         # Si 'user' est une chaîne JSON, la parser
-        elif isinstance(data, dict) and isinstance(data.get('user'), str):
+        if isinstance(data.get('user'), str):
             try:
                 import json
-                data['user'] = json.loads(data['user'])
-            except (json.JSONDecodeError, TypeError):
-                pass
+                user_data = json.loads(data['user'])
+                # Remplacer la chaîne par l'objet parsé
+                if hasattr(data, 'setlist'):  # QueryDict
+                    data = data.copy()
+                    data['user'] = user_data
+                else:  # dict normal
+                    data = dict(data)
+                    data['user'] = user_data
+            except (json.JSONDecodeError, TypeError) as e:
+                raise serializers.ValidationError({
+                    'user': 'Invalid JSON format for user data'
+                })
+
+        # Validation des champs requis
+        if not data.get('user'):
+            raise serializers.ValidationError({'user': 'This field is required.'})
         
+        if not data.get('role'):
+            raise serializers.ValidationError({'role': 'This field is required.'})
+            
+        if not data.get('establishment_name'):
+            raise serializers.ValidationError({'establishment_name': 'This field is required.'})
+            
+        if not data.get('establishment_address'):
+            raise serializers.ValidationError({'establishment_address': 'This field is required.'})
+            
+        if not data.get('establishment_type'):
+            raise serializers.ValidationError({'establishment_type': 'This field is required.'})
+
         return super().to_internal_value(data)
+
+    def validate_user(self, value):
+        """Validation spécifique des données utilisateur"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("User data must be a valid object")
+        
+        required_fields = ['username', 'email']
+        for field in required_fields:
+            if not value.get(field):
+                raise serializers.ValidationError(f"{field} is required in user data")
+        
+        # Validation email
+        email = value.get('email')
+        if email and '@' not in email:
+            raise serializers.ValidationError("Enter a valid email address")
+            
+        return value
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
         avatar = validated_data.pop('avatar', None)
         points_of_sale = validated_data.pop('points_of_sale', [])
         
-        user = UserSerializer().create(user_data)
+        # Créer l'utilisateur
+        user_serializer = UserSerializer(data=user_data)
+        if user_serializer.is_valid():
+            user = user_serializer.save()
+        else:
+            raise serializers.ValidationError({'user': user_serializer.errors})
+        
+        # Créer le profil
         profile = UserProfile.objects.create(user=user, avatar=avatar, **validated_data)
         
+        # Associer les points de vente
         if points_of_sale:
             profile.points_of_sale.set(points_of_sale)
         
@@ -131,20 +177,24 @@ class UserProfileSerializer(serializers.ModelSerializer):
         avatar = validated_data.pop('avatar', None)
         points_of_sale = validated_data.pop('points_of_sale', None)
 
+        # Mettre à jour l'utilisateur
         if user_data:
             user_serializer = UserSerializer(instance.user, data=user_data, partial=True)
             if user_serializer.is_valid():
                 user_serializer.save()
+            else:
+                raise serializers.ValidationError({'user': user_serializer.errors})
 
+        # Mettre à jour les autres champs
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        
+
         if avatar:
             instance.avatar = avatar
-        
+
         if points_of_sale is not None:
             instance.points_of_sale.set(points_of_sale)
-        
+
         instance.save()
         return instance
 

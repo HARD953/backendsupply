@@ -144,15 +144,36 @@ class UserProfileListCreateView(generics.ListCreateAPIView):
         
         return queryset
 
-    def perform_create(self, serializer):
-        if serializer.is_valid():
-            # On force l'établissement à être le même que celui de l'utilisateur connecté
-            serializer.validated_data['establishment_name'] = self.request.user.profile.establishment_name
+    def create(self, request, *args, **kwargs):
+        """Override pour debugging"""
+        print("=== DEBUG CREATE USER ===")
+        print("Request data:", request.data)
+        print("Request FILES:", request.FILES)
+        
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            # Force l'établissement à être le même que celui de l'utilisateur connecté
+            if hasattr(request.user, 'profile'):
+                serializer.validated_data['establishment_name'] = request.user.profile.establishment_name
+            
             profile = serializer.save()
             
-            # On lie automatiquement les POS de l'utilisateur connecté
-            if not profile.points_of_sale.exists():
-                profile.points_of_sale.set(self.request.user.profile.points_of_sale.all())
+            # Lier automatiquement les POS de l'utilisateur connecté si aucun n'est spécifié
+            if hasattr(request.user, 'profile') and not profile.points_of_sale.exists():
+                profile.points_of_sale.set(request.user.profile.points_of_sale.all())
+            
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except serializers.ValidationError as e:
+            print("Validation errors:", e.detail)
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print("Unexpected error:", str(e))
+            return Response(
+                {'detail': f'An error occurred: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = UserProfileSerializer
