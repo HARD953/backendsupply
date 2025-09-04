@@ -357,7 +357,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Récupérer le profil de l'utilisateur connecté comme customer
-        user_profile = self.request.user
+        user_profile = self.request.user.profile  # ← Ajouter .profile ici
         
         # Récupérer le point de vente depuis les données validées
         point_of_sale = serializer.validated_data.get('point_of_sale')
