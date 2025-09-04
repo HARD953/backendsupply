@@ -357,7 +357,7 @@ class OrderListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Récupérer le profil de l'utilisateur connecté comme customer
-        user_profile = self.request.user.id
+        user_profile = self.request.user
         
         # Récupérer le point de vente depuis les données validées
         point_of_sale = serializer.validated_data.get('point_of_sale')
@@ -1450,10 +1450,13 @@ from django.utils import timezone
 from datetime import datetime
 from django.http import JsonResponse
 from .models import Purchase, Sale
+from rest_framework.decorators import api_view
 from django.conf import settings
 
+@api_view(['GET'])
 def get_customer_sales(request):
     # Récupérer les dates de début et fin depuis la requête
+    vendor = request.user.id
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
     
@@ -1466,6 +1469,7 @@ def get_customer_sales(request):
     
     # Récupérer les achats dans la période spécifiée
     purchases = Purchase.objects.filter(
+        vendor=vendor,
         purchase_date__gte=start_date,
         purchase_date__lte=end_date
     ).prefetch_related('purchases')  # Prefetch related sales
@@ -1573,7 +1577,6 @@ def get_customer_sales_simple(request):
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
     end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
     
-
     purchases = Purchase.objects.filter(
         vendor=vendor,
         purchase_date__gte=start_date,

@@ -303,13 +303,13 @@ class OrderSerializer(serializers.ModelSerializer):
             data['point_of_sale'] = product_variant.product.point_of_sale
 
         # Verify all items belong to the same point_of_sale
-        point_of_sale = data['point_of_sale']
-        for item in items:
-            item_variant = item.get('product_variant')
-            if item_variant.product.point_of_sale != point_of_sale:
-                raise serializers.ValidationError(
-                    "All items must belong to the same point of sale"
-                )
+        # point_of_sale = data['point_of_sale']
+        # for item in items:
+        #     item_variant = item.get('product_variant')
+        #     if item_variant.product.point_of_sale != point_of_sale:
+        #         raise serializers.ValidationError(
+        #             "All items must belong to the same point of sale"
+        #         )
 
         # Calculate order total
         total = sum(
