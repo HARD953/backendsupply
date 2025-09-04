@@ -299,7 +299,6 @@ class OrderSerializer(serializers.ModelSerializer):
             product_variant = first_item.get('product_variant')
             if not product_variant:
                 raise serializers.ValidationError("Product variant is required in items")
-            
             data['point_of_sale'] = product_variant.product.point_of_sale
 
         # Verify all items belong to the same point_of_sale
