@@ -87,6 +87,32 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'establishment_registration_date': {'read_only': True},
         }
 
+    def to_internal_value(self, data):
+        """
+        Convertit les données du client en données internes.
+        Gère le cas où les données utilisateur sont envoyées séparément.
+        """
+        # Si les données utilisateur sont envoyées comme des champs séparés
+        if isinstance(data, dict) and 'user' not in data:
+            # Construire l'objet user à partir des champs séparés
+            user_data = {}
+            for field in ['username', 'email', 'first_name', 'last_name', 'password']:
+                if field in data:
+                    user_data[field] = data.pop(field)
+            
+            if user_data:
+                data['user'] = user_data
+        
+        # Si 'user' est une chaîne JSON, la parser
+        elif isinstance(data, dict) and isinstance(data.get('user'), str):
+            try:
+                import json
+                data['user'] = json.loads(data['user'])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        return super().to_internal_value(data)
+
     def create(self, validated_data):
         user_data = validated_data.pop('user')
         avatar = validated_data.pop('avatar', None)
