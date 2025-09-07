@@ -40,7 +40,7 @@ router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vend
 router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
 router.register(r'sales', SaleViewSet, basename='sale')
-router.register(r'profiles', UserProfileViewSet)
+router.register(r'users', UserProfileViewSet)
 
 
 
