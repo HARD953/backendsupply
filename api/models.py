@@ -130,8 +130,15 @@ class UserProfile(models.Model):
         ('inactive', 'Inactif'),
         ('suspended', 'Suspendu'),
     ]
-
+    owner = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='managed_profiles',
+        verbose_name="Propriétaire/Créateur"
+    )
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    
     phone = models.CharField(max_length=20, blank=True, null=True)
     location = models.CharField(max_length=200, blank=True, null=True)
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, related_name='users')

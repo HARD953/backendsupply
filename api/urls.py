@@ -5,7 +5,6 @@ from .views import (
     PointOfSaleListCreateView, PointOfSaleDetailView,
     PermissionListView, PermissionDetailView,
     RoleListCreateView, RoleDetailView,
-    UserProfileListCreateView, UserProfileDetailView,
     ProductListCreateView, ProductDetailView,
     StockMovementListCreateView, StockMovementDetailView,
     OrderListCreateView, OrderDetailView,
@@ -29,6 +28,7 @@ from .views_rapports import (
 # urls.py
 from django.urls import path
 from . import views
+from .views import UserProfileViewSet
 
 from rest_framework.routers import DefaultRouter
 # Création du routeur
@@ -40,6 +40,7 @@ router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vend
 router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
 router.register(r'sales', SaleViewSet, basename='sale')
+router.register(r'profiles', UserProfileViewSet)
 
 
 
@@ -70,9 +71,9 @@ urlpatterns = [
     path('roles/', RoleListCreateView.as_view(), name='role-list-create'),
     path('roles/<int:id>/', RoleDetailView.as_view(), name='role-detail'),
     
-    # Utilisateurs
-    path('users/', UserProfileListCreateView.as_view(), name='user-list-create'),
-    path('users/<int:pk>/', UserProfileDetailView.as_view(), name='user-detail'),
+    # # Utilisateurs
+    # path('users/', UserProfileListCreateView.as_view(), name='user-list-create'),
+    # path('users/<int:pk>/', UserProfileDetailView.as_view(), name='user-detail'),
     
     # Produits
     path('products/', ProductListCreateView.as_view(), name='product-list-create'),

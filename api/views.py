@@ -113,69 +113,49 @@ class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = RoleSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-class UserProfileListCreateView(generics.ListCreateAPIView):
+from rest_framework import viewsets, status, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.contrib.auth.models import User
+from .models import UserProfile
+from .serializers import UserProfileSerializer
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserProfile.objects.all().select_related('user', 'role', 'owner')
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = {
-        'role': ['exact'],
-        'status': ['exact'],
-        'points_of_sale': ['exact'],
-        'establishment_type': ['exact'],
-        'establishment_registration_date': ['gte', 'lte'],
-    }
-    search_fields = [
-        'user__username', 
-        'user__email', 
-        'phone',
-        'establishment_name',
-        'establishment_address'
-    ]
 
     def get_queryset(self):
-        user_profile = self.request.user.profile
-        queryset = UserProfile.objects.filter(
-            points_of_sale__in=user_profile.points_of_sale.all(),
-            establishment_name=user_profile.establishment_name
-        ).select_related(
-            'user', 'role'
-        ).prefetch_related(
-            'points_of_sale'
-        ).distinct()
-        
-        return queryset
+        user = self.request.user
+        if user.is_superuser:
+            return self.queryset.all()
+        return self.queryset.filter(owner=user)
 
     def create(self, request, *args, **kwargs):
-        """Override pour debugging"""
-        print("=== DEBUG CREATE USER ===")
-        print("Request data:", request.data)
-        print("Request FILES:", request.FILES)
+        """
+        Surcharge pour mieux capturer les erreurs
+        """
+        print("Données reçues:", request.data)  # Debug
         
         serializer = self.get_serializer(data=request.data)
+        
         try:
             serializer.is_valid(raise_exception=True)
-            # Force l'établissement à être le même que celui de l'utilisateur connecté
-            if hasattr(request.user, 'profile'):
-                serializer.validated_data['establishment_name'] = request.user.profile.establishment_name
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
             
-            profile = serializer.save()
-            
-            # Lier automatiquement les POS de l'utilisateur connecté si aucun n'est spécifié
-            if hasattr(request.user, 'profile') and not profile.points_of_sale.exists():
-                profile.points_of_sale.set(request.user.profile.points_of_sale.all())
-            
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-        except serializers.ValidationError as e:
-            print("Validation errors:", e.detail)
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            print("Unexpected error:", str(e))
+            print("Erreur détaillée:", str(e))  # Debug
             return Response(
-                {'detail': f'An error occurred: {str(e)}'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"detail": str(e), "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+        
 class UserProfileDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
