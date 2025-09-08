@@ -135,7 +135,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         """
         Surcharge pour mieux capturer les erreurs
         """
-        print("Données reçues:", request.data)  # Debug
+        print("=== DEBUG DONNÉES RECUES ===")
+        print("Content-Type:", request.content_type)
+        print("Data:", request.data)
+        print("POST:", request.POST)
+        print("FILES:", request.FILES)
+        print("============================")
+        
+        # NE PAS accéder à request.body après avoir lu request.data
+        # print("Body:", request.body)  # ← SUPPRIMER CETTE LIGNE
         
         serializer = self.get_serializer(data=request.data)
         
@@ -145,7 +153,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            print("Erreur détaillée:", str(e))  # Debug
+            print("Erreur détaillée:", str(e))
+            print("Erreurs de validation:", serializer.errors)
             return Response(
                 {"detail": str(e), "errors": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST
