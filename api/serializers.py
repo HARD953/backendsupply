@@ -404,20 +404,20 @@ class SimpleProductSerializer(serializers.ModelSerializer):
 
 class StockMovementSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantSerializer(read_only=True)
-    product_variant_id = serializers.PrimaryKeyRelatedField(
-        queryset=ProductVariant.objects.all(), source='product_variant', write_only=True
-    )
+    # product_variant_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=ProductVariant.objects.all(), source='product_variant', write_only=True
+    # )
     product_name = serializers.CharField(source='product_variant.product.name', read_only=True)
     user = serializers.CharField(source='user.username', read_only=True)
-    user_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), source='user', write_only=True, allow_null=True
-    )
+    # user_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=User.objects.all(), source='user', write_only=True, allow_null=True
+    # )
 
     class Meta:
         model = StockMovement
         fields = [
-            'id', 'product_variant', 'product_variant_id', 'product_name',
-            'type', 'quantity', 'date', 'reason', 'user', 'user_id', 'created_at'
+            'id', 'product_variant', 'product_name',
+            'type', 'quantity', 'date', 'reason', 'user', 'created_at'
         ]
 
         
