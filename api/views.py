@@ -1456,86 +1456,113 @@ class SaleViewSet(viewsets.ModelViewSet):
         growth_rate = ((last_month - first_month) / first_month) * 100
         return float(growth_rate)
     
-from django.db.models import Sum, F, Count
+from django.db.models import Sum
 from django.utils import timezone
 from datetime import datetime
 from django.http import JsonResponse
-from .models import Purchase, Sale
+from .models import Purchase, Sale, MobileVendor
 from rest_framework.decorators import api_view
-from django.conf import settings
+from django.db.models import Prefetch
 
 @api_view(['GET'])
 def get_customer_sales(request):
-    # Récupérer les dates de début et fin depuis la requête
-    vendor = request.user.id
-    start_date_str = request.GET.get('start_date')
-    end_date_str = request.GET.get('end_date')
-    
-    # Convertir les dates en objets datetime
-    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
-    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
-    
-    # Ajouter le temps à la fin de la journée pour end_date
-    end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
-    
-    # Récupérer les achats dans la période spécifiée
-    purchases = Purchase.objects.filter(
-        vendor=vendor,
-        purchase_date__gte=start_date,
-        purchase_date__lte=end_date
-    ).prefetch_related('purchases')  # Prefetch related sales
-    
-    customer_data = []
-    
-    for purchase in purchases:
-        # Récupérer toutes les ventes associées à cet achat
-        sales = purchase.purchases.all()
+    try:
+        # Vérifier l'authentification
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'Authentication required'}, status=401)
         
-        # Calculer le total des ventes pour ce client
-        total_sales_amount = sales.aggregate(total=Sum('total_amount'))['total'] or 0
-        total_quantity = sales.aggregate(total=Sum('quantity'))['total'] or 0
+        # Récupérer le MobileVendor associé à l'utilisateur connecté
+        try:
+            vendor = MobileVendor.objects.get(user=request.user)
+        except MobileVendor.DoesNotExist:
+            return JsonResponse({'error': 'Vendor profile not found'}, status=404)
         
-        # Générer l'URL complète de la photo si elle existe
-        photo_url = None
-        if purchase.photo:
-            photo_url = request.build_absolute_uri(purchase.photo.url)
+        # Récupérer les dates de début et fin
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
         
-        customer_data.append({
-            'id': purchase.id,
-            'full_name': purchase.full_name,
-            'phone': purchase.phone,
-            'zone': purchase.zone,
-            'base': purchase.base,
-            'pushcard_type': purchase.pushcard_type,
-            'latitude': purchase.latitude,
-            'longitude': purchase.longitude,
-            'purchase_date': purchase.purchase_date.isoformat(),
-            'photo_url': photo_url,  # ✅ Ajout de l'URL de la photo
-            'total_sales_amount': float(total_sales_amount),
-            'total_quantity': total_quantity,
-            'sales_count': sales.count(),
-            'sales_details': [
-                {
-                    'product': sale.product_variant.product.name if sale.product_variant and sale.product_variant.product else 'N/A',
-                    'variant': sale.product_variant.product if sale.product_variant else 'N/A',
-                    'quantity': sale.quantity,
-                    'amount': float(sale.total_amount),
-                    'date': sale.created_at.isoformat()
-                }
-                for sale in sales
-            ]
+        # Convertir les dates
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
+        end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        
+        # Récupérer les achats du vendeur dans la période spécifiée
+        purchases = Purchase.objects.filter(
+            vendor=vendor,
+            purchase_date__gte=start_date,
+            purchase_date__lte=end_date
+        ).prefetch_related(
+            Prefetch('purchases', queryset=Sale.objects.select_related(
+                'product_variant', 
+                'product_variant__product',
+                'product_variant__format'
+            ))
+        )
+        
+        customer_data = []
+        
+        for purchase in purchases:
+            # Récupérer toutes les ventes associées à cet achat
+            sales = purchase.purchases.all()
+            
+            # Calculer les totaux
+            total_sales_amount = sales.aggregate(total=Sum('total_amount'))['total'] or 0
+            total_quantity = sales.aggregate(total=Sum('quantity'))['total'] or 0
+            
+            # Générer l'URL de la photo
+            photo_url = None
+            if purchase.photo:
+                photo_url = request.build_absolute_uri(purchase.photo.url)
+            
+            customer_data.append({
+                'id': purchase.id,
+                'full_name': purchase.full_name,
+                'phone': purchase.phone,
+                'zone': purchase.zone,
+                'base': purchase.base,
+                'pushcard_type': purchase.pushcard_type,
+                'latitude': purchase.latitude,
+                'longitude': purchase.longitude,
+                'purchase_date': purchase.purchase_date.isoformat(),
+                'photo_url': photo_url,
+                'total_sales_amount': float(total_sales_amount),
+                'total_quantity': total_quantity,
+                'sales_count': sales.count(),
+                'sales_details': [
+                    {
+                        'product': sale.product_variant.product.name if sale.product_variant and sale.product_variant.product else 'N/A',
+                        'variant_id': sale.product_variant.id if sale.product_variant else None,  # ✅ ID au lieu de l'objet
+                        'variant_name': str(sale.product_variant) if sale.product_variant else 'N/A',  # ✅ String representation
+                        'format': sale.product_variant.format.name if sale.product_variant and sale.product_variant.format else 'N/A',
+                        'price': float(sale.product_variant.price) if sale.product_variant else 0.0,
+                        'quantity': sale.quantity,
+                        'amount': float(sale.total_amount),
+                        'date': sale.created_at.isoformat()
+                    }
+                    for sale in sales
+                ]
+            })
+        
+        return JsonResponse({
+            'period': {
+                'start_date': start_date.strftime('%Y-%m-%d'),
+                'end_date': end_date.strftime('%Y-%m-%d')
+            },
+            'vendor': {
+                'id': vendor.id,
+                'full_name': vendor.full_name,
+                'point_of_sale': vendor.point_of_sale.name if vendor.point_of_sale else 'N/A'
+            },
+            'customers': customer_data,
+            'total_customers': len(customer_data),
+            'grand_total_sales': sum(customer['total_sales_amount'] for customer in customer_data),
+            'grand_total_quantity': sum(customer['total_quantity'] for customer in customer_data)
         })
-    
-    return JsonResponse({
-        'period': {
-            'start_date': start_date.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d')
-        },
-        'customers': customer_data,
-        'total_customers': len(customer_data),
-        'grand_total_sales': sum(customer['total_sales_amount'] for customer in customer_data)
-    })
-
+        
+    except ValueError:
+        return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
 
 def get_customer_sales_optimized(request):
     start_date_str = request.GET.get('start_date')

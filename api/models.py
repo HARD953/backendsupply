@@ -534,7 +534,14 @@ class MobileVendor(models.Model):
         ('autre', 'Autre'),
     ]
 
-    # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # # id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # owner = models.ForeignKey(
+    #     User, 
+    #     on_delete=models.SET_NULL, 
+    #     null=True, 
+    #     related_name='managed_profiles',
+    #     verbose_name="Propriétaire/Créateur"
+    # )
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='mobile_vendor', null=True, blank=True)
     point_of_sale = models.ForeignKey(
         'PointOfSale', 

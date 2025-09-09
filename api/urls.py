@@ -129,7 +129,7 @@ urlpatterns = [
 
     # path('customer-sales/', views.get_customer_sales, name='customer-sales'),
     # path('customer-sales-optimized/', views.get_customer_sales_optimized, name='customer-sales-optimized'),
-    path('carte/', views.get_customer_sales_simple, name='customer-sales-sales'),
+    path('carte/', views.get_customer_sales, name='customer-sales-sales'),
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
 ]
 

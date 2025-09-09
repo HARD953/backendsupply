@@ -701,6 +701,7 @@ class MobileVendorSerializer(serializers.ModelSerializer):
         if not isinstance(value, list):
             raise serializers.ValidationError("Les zones doivent être une liste")
         return value
+    
 
 
 class VendorActivitySerializer(serializers.ModelSerializer):
