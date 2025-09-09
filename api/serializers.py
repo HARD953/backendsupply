@@ -672,10 +672,13 @@ class MobileVendorSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     vehicle_type_display = serializers.CharField(source='get_vehicle_type_display', read_only=True)
     full_name = serializers.SerializerMethodField()
+    
+    # Champs pour la création de l'utilisateur
+    username = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False)
 
-    # ✅ Corriger ici
     zones = serializers.ListField(
-        child=serializers.CharField(),  # ou JSONField() si c'est une liste de dicts
+        child=serializers.CharField(),
         allow_empty=True
     )
 
@@ -686,7 +689,7 @@ class MobileVendorSerializer(serializers.ModelSerializer):
             'photo', 'status', 'status_display', 'vehicle_type', 'vehicle_type_display',
             'vehicle_id', 'zones', 'performance', 'average_daily_sales',
             'point_of_sale', 'point_of_sale_name', 'date_joined', 'last_activity',
-            'is_approved', 'notes', 'created_at'
+            'is_approved', 'notes', 'created_at', 'username', 'password'
         ]
         extra_kwargs = {
             'point_of_sale': {'required': True},
@@ -696,12 +699,46 @@ class MobileVendorSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
 
-    # Cette méthode devient redondante mais peut rester
     def validate_zones(self, value):
         if not isinstance(value, list):
             raise serializers.ValidationError("Les zones doivent être une liste")
         return value
-    
+
+    def create(self, validated_data):
+        # Extraire les données pour la création de l'utilisateur
+        username = validated_data.pop('username', None)
+        password = validated_data.pop('password', None)
+        
+        # Créer l'utilisateur si les informations sont fournies
+        user = None
+        if username and password:
+            # Vérifier si l'utilisateur existe déjà
+            if User.objects.filter(username=username).exists():
+                raise serializers.ValidationError({"username": "Ce nom d'utilisateur existe déjà."})
+            
+            # Créer le nouvel utilisateur
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=validated_data.get('first_name', ''),
+                last_name=validated_data.get('last_name', ''),
+                email=validated_data.get('email', '')
+            )
+        
+        # Créer le MobileVendor
+        mobile_vendor = MobileVendor.objects.create(user=user, **validated_data)
+        return mobile_vendor
+
+    def update(self, instance, validated_data):
+        # Gérer la mise à jour du mot de passe si fourni
+        password = validated_data.pop('password', None)
+        
+        if password and instance.user:
+            instance.user.set_password(password)
+            instance.user.save()
+        
+        # Mettre à jour les autres champs
+        return super().update(instance, validated_data)
 
 
 class VendorActivitySerializer(serializers.ModelSerializer):

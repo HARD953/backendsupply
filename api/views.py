@@ -920,10 +920,10 @@ from .serializers import (
 )
 
 class MobileVendorViewSet(viewsets.ModelViewSet):
-    queryset = MobileVendor.objects.select_related('point_of_sale').all()
+    queryset = MobileVendor.objects.select_related('point_of_sale', 'user').all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'point_of_sale', 'vehicle_type', 'is_approved']
-    search_fields = ['first_name', 'last_name', 'phone', 'email']
+    search_fields = ['first_name', 'last_name', 'phone', 'email', 'user__username']
     ordering_fields = ['performance', 'date_joined', 'last_name']
     ordering = ['-created_at']
 
@@ -960,6 +960,7 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         vendors = MobileVendor.objects.filter(point_of_sale_id=pos_id)
         serializer = self.get_serializer(vendors, many=True)
         return Response(serializer.data)
+    
 class VendorActivityViewSet(viewsets.ModelViewSet):
     queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_order__items', 'related_order__items__product_variant', 'related_order__items__product_variant__product').all()
     serializer_class = VendorActivitySerializer
