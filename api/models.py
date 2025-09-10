@@ -187,18 +187,18 @@ class UserProfile(models.Model):
         """Méthode pour synchroniser éventuellement avec un POS existant"""
         super().save(*args, **kwargs)
         
-        # Si on veut créer automatiquement un POS à partir des infos
-        if not self.points_of_sale.exists() and self.establishment_name:
-            pos = PointOfSale.objects.create(
-                name=self.establishment_name,
-                phone=self.establishment_phone,
-                email=self.establishment_email,
-                address=self.establishment_address,
-                type=self.establishment_type,
-                registration_date=self.establishment_registration_date,
-                user=self.user,  # Add this line to set the user relationship
-            )
-            self.points_of_sale.add(pos)
+        # # Si on veut créer automatiquement un POS à partir des infos
+        # if not self.points_of_sale.exists() and self.establishment_name:
+        #     pos = PointOfSale.objects.create(
+        #         name=self.establishment_name,
+        #         phone=self.establishment_phone,
+        #         email=self.establishment_email,
+        #         address=self.establishment_address,
+        #         type=self.establishment_type,
+        #         registration_date=self.establishment_registration_date,
+        #         user=self.user,  # Add this line to set the user relationship
+        #     )
+        #     self.points_of_sale.add(pos)
     def __str__(self):
         return f"{self.user.username} ({self.role.name if self.role else 'No Role'})"
     
