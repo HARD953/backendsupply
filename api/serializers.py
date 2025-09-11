@@ -978,3 +978,11 @@ class PointOfSaleSerializers(serializers.ModelSerializer):
 #             instance.points_of_sale.set(points_of_sale)
         
 #         return instance
+
+
+class PurchaseSerializer1(serializers.ModelSerializer):
+    sales_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = Purchase
+        fields = '__all__'

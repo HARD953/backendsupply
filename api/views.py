@@ -911,16 +911,23 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import MobileVendor, VendorActivity, VendorPerformance
+from django.db.models import Sum, Prefetch
+from .models import MobileVendor, VendorActivity, VendorPerformance, Purchase, Sale
 from .serializers import (
     MobileVendorSerializer,
     VendorActivitySerializer,
     VendorPerformanceSerializer,
-    MobileVendorDetailSerializer,VendorActivitySummarySerializer
+    MobileVendorDetailSerializer,
+    VendorActivitySummarySerializer,
+    PurchaseSerializer1  # Vous devrez créer ce serializer
 )
 
 class MobileVendorViewSet(viewsets.ModelViewSet):
-    queryset = MobileVendor.objects.select_related('point_of_sale', 'user').all()
+    queryset = MobileVendor.objects.select_related('point_of_sale', 'user').prefetch_related(
+        Prefetch('purchases', queryset=Purchase.objects.annotate(
+            total_sales=Sum('purchases__total_amount')
+        ))
+    ).all()
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'point_of_sale', 'vehicle_type', 'is_approved']
     search_fields = ['first_name', 'last_name', 'phone', 'email', 'user__username']
@@ -932,11 +939,36 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
             return MobileVendorDetailSerializer
         return MobileVendorSerializer
 
+    def retrieve(self, request, *args, **kwargs):
+        # Récupération normale de l'objet
+        instance = self.get_object()
+        
+        # Récupération des achats avec la somme des ventes
+        purchases = Purchase.objects.filter(vendor=instance).annotate(
+            sales_total=Sum('purchases__total_amount')
+        )
+        
+        # Sérialisation du vendeur
+        serializer = self.get_serializer(instance)
+        data = serializer.data
+        
+        # Ajout des achats avec la somme des ventes
+        purchase_serializer = PurchaseSerializer1(purchases, many=True)
+        data['purchases'] = purchase_serializer.data
+        
+        return Response(data)
+
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
         vendor = self.get_object()
+        
+        # Calcul de la somme totale des ventes pour ce vendeur
+        total_sales = Sale.objects.filter(vendor=vendor).aggregate(
+            total=Sum('total_amount')
+        )['total'] or 0
+        
         stats = {
-            'total_sales': vendor.average_daily_sales * 30,  # Estimation mensuelle
+            'total_sales': total_sales,  # Utilisation du vrai total des ventes
             'active_days': VendorActivity.objects.filter(
                 vendor=vendor,
                 activity_type__in=['check_in', 'sale']
