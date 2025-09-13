@@ -88,7 +88,7 @@ class PointOfSaleListCreateView(generics.ListCreateAPIView):
 
 class PointOfSaleDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = PointOfSale.objects.all()
-    serializer_class = PointOfSaleSerializer
+    serializer_class = PointOfSaleSerializerCreate
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 class PermissionListView(generics.ListAPIView):
