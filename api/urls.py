@@ -17,7 +17,7 @@ from .views import (
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 
 )
-from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet
+from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet,PurchaseViewSetData
 
 from .views_rapports import (
     SalesAnalyticsView, InventoryStatusView,
@@ -41,6 +41,8 @@ router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserProfileViewSet)
+router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
+
 
 
 
