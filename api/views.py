@@ -13,7 +13,7 @@ from .serializers import (
     OrderSerializer, OrderItemSerializer, DisputeSerializer, 
     TokenSerializer, TokenTransactionSerializer,
     NotificationSerializer, DashboardSerializer, StockOverviewSerializer,
-    ProductFormatSerializer,PointOfSaleSerializers
+    ProductFormatSerializer,PointOfSaleSerializerCreate
 )
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -77,7 +77,7 @@ class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class PointOfSaleListCreateView(generics.ListCreateAPIView):
     queryset = PointOfSale.objects.all()
-    serializer_class = PointOfSaleSerializer
+    serializer_class = PointOfSaleSerializerCreate
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['type', 'status', 'district', 'region', 'commune']

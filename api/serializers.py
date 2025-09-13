@@ -82,6 +82,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password': {'required': True}
         }
 
+class PointOfSaleSerializerCreate(serializers.ModelSerializer):
+    class Meta:
+        model = PointOfSale
+        # on inclut tous les champs sauf "user"
+        exclude = ('user',)
+        
+        # champs en lecture seule
+        read_only_fields = (
+            'created_at',
+            'updated_at'
+        )
+
 class PointOfSaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = PointOfSale
