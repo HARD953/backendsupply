@@ -434,12 +434,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = [
             'id', 'product_variant', 'product_variant_id', 'product_name',
-            'name', 'quantity', 'price', 'total'
+            'name', 'quantity', 'price', 'total','quantity_affecte'
         ]
         extra_kwargs = {
             'total': {'required': False},
             'price': {'required': False}
         }
+        read_only_fields = ['quantity_affecte']
 
     def validate(self, data):
         product_variant = data.get('product_variant')
