@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
+from rest_framework.exceptions import ValidationError
 
 class Category(models.Model):
     """
@@ -392,10 +393,63 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     total = models.DecimalField(max_digits=10, decimal_places=2)
-
+    quantity_affecte = models.PositiveIntegerField(default=0)
+    
     def save(self, *args, **kwargs):
+        # Calcul du total
         self.total = self.quantity * self.price
+        
+        # Vérifier que quantity_affecte ne dépasse jamais quantity
+        if self.quantity_affecte > self.quantity:
+            raise ValidationError("La quantité affectée ne peut pas dépasser la quantité commandée")
+        
+        # Si c'est une nouvelle instance (création)
+        if self.pk is None:
+            # Décrémenter le stock de la variante
+            if self.product_variant:
+                self.product_variant.current_stock -= self.quantity
+                self.product_variant.save()
+        else:
+            # Si c'est une mise à jour, gérer la différence de quantité
+            old_item = OrderItem.objects.get(pk=self.pk)
+            if old_item.quantity != self.quantity and self.product_variant:
+                quantity_diff = old_item.quantity - self.quantity
+                self.product_variant.current_stock += quantity_diff
+                self.product_variant.save()
+        
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Restaurer le stock lors de la suppression
+        if self.product_variant:
+            self.product_variant.current_stock += self.quantity
+            self.product_variant.save()
+        super().delete(*args, **kwargs)
+
+    def affecter_quantite(self, quantite):
+        """
+        Méthode pour affecter une quantité à cet article
+        """
+        if self.quantity_affecte + quantite > self.quantity:
+            raise ValidationError(
+                f"Impossible d'affecter {quantite} unités. "
+                f"Quantité restante: {self.quantity - self.quantity_affecte}"
+            )
+        
+        self.quantity_affecte += quantite
+        self.save()
+        
+    def quantite_restante(self):
+        """
+        Retourne la quantité restante à affecter
+        """
+        return self.quantity - self.quantity_affecte
+    
+    def est_completement_affecte(self):
+        """
+        Vérifie si toute la quantité a été affectée
+        """
+        return self.quantity_affecte == self.quantity
 
     def __str__(self):
         return f"{self.name} (x{self.quantity})"
@@ -617,12 +671,54 @@ class VendorActivity(models.Model):
         related_name='vendor_activities'
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    quantity_assignes = models.PositiveIntegerField()
-    quantity_sales = models.PositiveIntegerField()
+    quantity_assignes = models.PositiveIntegerField(default=0)
+    quantity_sales = models.PositiveIntegerField(default=0)
+    
     class Meta:
         verbose_name = "Activité de vendeur"
         verbose_name_plural = "Activités des vendeurs"
         ordering = ['-timestamp']
+
+    def save(self, *args, **kwargs):
+        # Si c'est une activité de réapprovisionnement avec une commande associée
+        if (self.activity_type == 'stock_replenishment' and 
+            self.related_order and 
+            self.quantity_assignes > 0):
+            
+            self.affecter_quantite_commande()
+        
+        super().save(*args, **kwargs)
+    
+    def affecter_quantite_commande(self):
+        """
+        Affecte la quantité assignée aux articles de la commande
+        """
+        if not self.related_order:
+            return
+            
+        order_items = self.related_order.items.all()
+        quantite_restante = self.quantity_assignes
+        
+        for item in order_items:
+            if quantite_restante <= 0:
+                break
+                
+            if not item.est_completement_affecte():
+                quantite_a_affecter = min(quantite_restante, item.quantite_restante())
+                
+                try:
+                    item.affecter_quantite(quantite_a_affecter)
+                    quantite_restante -= quantite_a_affecter
+                except ValidationError as e:
+                    # Log l'erreur mais continue avec les autres articles
+                    print(f"Erreur d'affectation: {e}")
+        
+        # Si il reste de la quantité non affectée, lever une exception
+        if quantite_restante > 0:
+            raise ValidationError(
+                f"{quantite_restante} unités n'ont pas pu être affectées. "
+                "La commande est peut-être déjà complètement affectée."
+            )
 
     def __str__(self):
         return f"{self.vendor.full_name} - {self.get_activity_type_display()}"
