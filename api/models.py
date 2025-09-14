@@ -73,6 +73,7 @@ class PointOfSale(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='en_attente')
     registration_date = models.DateField()
     turnover = models.DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    chiffre_affaire = models.DecimalField(default=0.0)
     monthly_orders = models.PositiveIntegerField(default=0)
     evaluation_score = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
