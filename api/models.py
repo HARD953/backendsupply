@@ -716,8 +716,8 @@ class VendorActivity(models.Model):
         # Si il reste de la quantité non affectée, lever une exception
         if quantite_restante > 0:
             raise ValidationError(
-                f"{quantite_restante} unités de cette commande n’ont pas pu être affectées"
-                "Toute la quantité de cette commande est déjà entièrement affectée."
+                f"{quantite_restante} unités de cette commande n’ont pas pu être affectées,"
+                " car la totalité de la quantité de cette commande est déjà attribuée."
             )
 
     def __str__(self):
