@@ -25,13 +25,14 @@ def update_point_of_sale_stats(sender, instance, **kwargs):
             )
             
             # Commandes livrées du mois en cours
+            delivered_orders_ca = current_month_orders.all()
             delivered_orders = current_month_orders.filter(status='delivered')
             
             # Mise à jour du nombre de commandes mensuelles
             monthly_orders_count = current_month_orders.count()
             
             # Mise à jour du chiffre d'affaires (seulement les commandes livrées)
-            ca_data = delivered_orders.aggregate(total_ca=Sum('total'))
+            ca_data = delivered_orders_ca.aggregate(total_ca=Sum('total'))
             turnover_value = ca_data['total_ca'] if ca_data['total_ca'] is not None else 0.00
             
             # Calcul du score d'évaluation
