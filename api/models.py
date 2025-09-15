@@ -641,6 +641,11 @@ class MobileVendor(models.Model):
         pass
 
 
+# models.py
+from django.db import models
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+
 class VendorActivity(models.Model):
     """
     Modèle pour suivre les activités quotidiennes des vendeurs ambulants
@@ -655,13 +660,13 @@ class VendorActivity(models.Model):
     ]
 
     vendor = models.ForeignKey(
-        MobileVendor, 
+        'MobileVendor', 
         on_delete=models.CASCADE, 
         related_name='activities'
     )
     activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPES)
     timestamp = models.DateTimeField(default=timezone.now)
-    location = models.JSONField(blank=True, null=True)  # {lat: x, lng: y}
+    location = models.JSONField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     related_order = models.ForeignKey(
         'Order', 
@@ -710,18 +715,32 @@ class VendorActivity(models.Model):
                     item.affecter_quantite(quantite_a_affecter)
                     quantite_restante -= quantite_a_affecter
                 except ValidationError as e:
-                    # Log l'erreur mais continue avec les autres articles
                     print(f"Erreur d'affectation: {e}")
         
-        # Si il reste de la quantité non affectée, lever une exception
         if quantite_restante > 0:
             raise ValidationError(
-                f"{quantite_restante} unités de cette commande n’ont pas pu être affectées,"
-                " car la totalité de la quantité de cette commande est déjà attribuée."
+                f"{quantite_restante} unités n'ont pas pu être affectées"
             )
+    
+    def peut_vendre(self, quantite_demandee):
+        return self.quantity_sales + quantite_demandee <= self.quantity_assignes
+    
+    def incrementer_ventes(self, quantite):
+        if not self.peut_vendre(quantite):
+            raise ValidationError(
+                f"Quantité insuffisante. Ventes: {self.quantity_sales}, Assigné: {self.quantity_assignes}"
+            )
+        self.quantity_sales += quantite
+        self.save()
+    
+    def quantite_restante(self):
+        return max(0, self.quantity_assignes - self.quantity_sales)
+    
+    def est_completement_vendu(self):
+        return self.quantity_sales >= self.quantity_assignes
 
     def __str__(self):
-        return f"{self.vendor.full_name} - {self.get_activity_type_display()}"
+        return f"{self.vendor.full_name} - {self.related_order.id} - {self.created_at}"
 
 class VendorPerformance(models.Model):
     """
@@ -812,15 +831,14 @@ class Purchase(models.Model):
 
         self.save()
 
-# models.py
 class Sale(models.Model):
     product_variant = models.ForeignKey(
-        ProductVariant,
+        'ProductVariant',
         on_delete=models.CASCADE,
         related_name='sales'
     )
     customer = models.ForeignKey(
-        Purchase,
+        'Purchase',
         on_delete=models.CASCADE,
         related_name='purchases'
     )
@@ -829,13 +847,21 @@ class Sale(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     vendor = models.ForeignKey(
-        MobileVendor,
+        'MobileVendor',
         on_delete=models.CASCADE,
-        related_name='mobile_vendors'
+        related_name='sales_vendors'  # Changé le related_name pour éviter les conflits
     )
+    vendor_activity = models.ForeignKey(
+        VendorActivity,
+        on_delete=models.CASCADE,
+        related_name='sales_activities',
+        null=True,
+        blank=True
+    )
+    
     class Meta:
         db_table = 'sales'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Vente #{self.id} - {self.product_variant} à {self.customer}"
+        return f"Vente #{self.id} - {self.product_variant}"

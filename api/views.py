@@ -947,7 +947,19 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         purchases = Purchase.objects.filter(vendor=instance).annotate(
             sales_total=Sum('purchases__total_amount')
         )
+
+        # Récupération de la dernière activité pour quantity_assignes
+        latest_activity = VendorActivity.objects.filter(
+            vendor=instance
+        ).order_by('-timestamp').first()
         
+        # Calcul des totaux des activités
+        activity_totals = VendorActivity.objects.filter(
+            vendor=instance
+        ).aggregate(
+            total_assignes=Sum('quantity_assignes'),
+            total_sales=Sum('quantity_sales')
+        )
         # Sérialisation du vendeur
         serializer = self.get_serializer(instance)
         data = serializer.data
@@ -1000,6 +1012,17 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
     filterset_fields = ['vendor', 'activity_type', 'related_order']
     ordering_fields = ['timestamp']
     ordering = ['-timestamp']
+
+    def get_queryset(self):
+        """
+        Surcharge pour filtrer les activités où quantity_assignes > quantity_sales
+        """
+        queryset = super().get_queryset()
+        
+        # Filtrer seulement les activités où quantity_assignes > quantity_sales
+        queryset = queryset.filter(quantity_assignes__gt=models.F('quantity_sales'))
+        
+        return queryset
 
     def perform_update(self, serializer):
         instance = serializer.save()

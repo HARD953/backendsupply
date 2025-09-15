@@ -878,7 +878,8 @@ class SaleSerializer(serializers.ModelSerializer):
             'product_variant_name',
             'format',
             'customer_name',
-            'vendor_name'
+            'vendor_name',
+            'vendor_activity'
         ]
         read_only_fields = ['created_at', 'updated_at', 'vendor']
 

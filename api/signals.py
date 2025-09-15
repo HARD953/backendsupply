@@ -53,3 +53,48 @@ def update_point_of_sale_stats(sender, instance, **kwargs):
     except Exception as e:
         # Loguer l'erreur mais ne pas bloquer l'application
         print(f"Erreur lors de la mise à jour des stats du point de vente: {e}")
+
+
+# signals.py
+from django.db.models.signals import pre_save, post_save
+from django.dispatch import receiver
+from django.core.exceptions import ValidationError
+from .models import Sale
+
+@receiver(pre_save, sender=Sale)
+def valider_vente_avant_sauvegarde(sender, instance, **kwargs):
+    print(f"🔵 Signal pre_save déclenché pour Sale #{instance.id if instance.id else 'Nouveau'}")
+    
+    if instance.vendor_activity:
+        print(f"   Activité vendeur: {instance.vendor_activity.id}")
+        print(f"   Quantité demandée: {instance.quantity}")
+        print(f"   Ventes actuelles: {instance.vendor_activity.quantity_sales}")
+        print(f"   Quantité assignée: {instance.vendor_activity.quantity_assignes}")
+        print(f"   Peut vendre: {instance.vendor_activity.peut_vendre(instance.quantity)}")
+        
+        if not instance.vendor_activity.peut_vendre(instance.quantity):
+            raise ValidationError(
+                f"Impossible de vendre {instance.quantity} unités. "
+                f"Quantité restante: {instance.vendor_activity.quantite_restante()}"
+            )
+    else:
+        print("   ⚠️ Aucune activité vendeur associée")
+
+@receiver(post_save, sender=Sale)
+def incrementer_ventes_apres_sauvegarde(sender, instance, created, **kwargs):
+    print(f"🟢 Signal post_save déclenché pour Sale #{instance.id}")
+    print(f"   Créé: {created}")
+    
+    if created and instance.vendor_activity:
+        print(f"   Tentative d'incrémenter les ventes de {instance.quantity}")
+        try:
+            from .models import VendorActivity
+            activity = VendorActivity.objects.get(id=instance.vendor_activity.id)
+            activity.incrementer_ventes(instance.quantity)
+            print(f"   ✅ Ventes incrémentées avec succès")
+        except ValidationError as e:
+            print(f"   ❌ Erreur: {e}")
+            instance.delete()
+            raise e
+    else:
+        print("   ⏭️ Aucune action nécessaire")
