@@ -685,42 +685,41 @@ class VendorActivity(models.Model):
         ordering = ['-timestamp']
 
     def save(self, *args, **kwargs):
-        # Si c'est une activité de réapprovisionnement avec une commande associée
-        if (self.activity_type == 'stock_replenishment' and 
-            self.related_order and 
-            self.quantity_assignes > 0):
+        # # Si c'est une activité de réapprovisionnement avec une commande associée
+        # if (self.activity_type == 'stock_replenishment' and 
+        #     self.related_order and 
+        #     self.quantity_assignes > 0):
             
-            self.affecter_quantite_commande()
-        
+        #     self.affecter_quantite_commande()
         super().save(*args, **kwargs)
     
-    def affecter_quantite_commande(self):
-        """
-        Affecte la quantité assignée aux articles de la commande
-        """
-        if not self.related_order:
-            return
+    # def affecter_quantite_commande(self):
+    #     """
+    #     Affecte la quantité assignée aux articles de la commande
+    #     """
+    #     if not self.related_order:
+    #         return
             
-        order_items = self.related_order.items.all()
-        quantite_restante = self.quantity_assignes
+    #     order_items = self.related_order.items.all()
+    #     quantite_restante = self.quantity_assignes
         
-        for item in order_items:
-            if quantite_restante <= 0:
-                break
+    #     for item in order_items:
+    #         if quantite_restante <= 0:
+    #             break
                 
-            if not item.est_completement_affecte():
-                quantite_a_affecter = min(quantite_restante, item.quantite_restante())
+    #         if not item.est_completement_affecte():
+    #             quantite_a_affecter = min(quantite_restante, item.quantite_restante())
                 
-                try:
-                    item.affecter_quantite(quantite_a_affecter)
-                    quantite_restante -= quantite_a_affecter
-                except ValidationError as e:
-                    print(f"Erreur d'affectation: {e}")
+    #             try:
+    #                 item.affecter_quantite(quantite_a_affecter)
+    #                 quantite_restante -= quantite_a_affecter
+    #             except ValidationError as e:
+    #                 print(f"Erreur d'affectation: {e}")
         
-        if quantite_restante > 0:
-            raise ValidationError(
-                f"{quantite_restante} unités n'ont pas pu être affectées"
-            )
+    #     if quantite_restante > 0:
+    #         raise ValidationError(
+    #             f"{quantite_restante} unités n'ont pas pu être affectées"
+    #         )
     
     def peut_vendre(self, quantite_demandee):
         return self.quantity_sales + quantite_demandee <= self.quantity_assignes
