@@ -685,12 +685,13 @@ class VendorActivity(models.Model):
         ordering = ['-timestamp']
 
     def save(self, *args, **kwargs):
-        # Si c'est une activité de réapprovisionnement avec une commande associée
-        if (self.activity_type == 'stock_replenishment' and 
-            self.related_order and 
-            self.quantity_assignes > 0):
+        # # Si c'est une activité de réapprovisionnement avec une commande associée
+        # # if (self.activity_type == 'stock_replenishment' and 
+        # #     self.related_order and 
+        # #     self.quantity_assignes > 0):
             
-            self.affecter_quantite_commande()
+        # #     
+        # self.affecter_quantite_commande()
         super().save(*args, **kwargs)
     
     def affecter_quantite_commande(self):
