@@ -86,8 +86,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+#Database
+#https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 # DATABASES = {
 #     'default': {
@@ -96,7 +96,7 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 #     }
 # }
 
-DATABASE_URL = config('DATABASE_URL', default='postgresql://chain_x4ed_user:FWPtiryXeVpnTq3PQ9vvmog8wNN8fFJ0@dpg-d35hfjpgv73c73dlv630-a.oregon-postgres.render.com/chain_x4ed')
+DATABASE_URL = config('DATABASE_URL', default='postgresql://chain_x3sl_user:wWfhmbDwm79wTAiVinXZ9skPQiViNwzB@dpg-d37bsmbuibrs738u2grg-a.oregon-postgres.render.com/chain_x3sl')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL),  # Utilisez dj-database-url pour parser l'URL
 }
@@ -143,9 +143,18 @@ STATIC_URL = 'static/'
 
 from datetime import timedelta
 
+# CORS_ALLOW_ALL_ORIGINS = True
+# # CORS_ALLOWED_ORIGINS = [
+# #     "http://localhost:3000",
+# # ]
+
+# Option 1 : Autoriser toutes les origines
 CORS_ALLOW_ALL_ORIGINS = True
+
+# OU Option 2 : Autoriser des origines spécifiques (toutes)
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    "http://*",
+    "https://*",
 ]
 
 # CORS_ALLOWED_ORIGINS =['http://localhost:3000/','http://localhost:3000']

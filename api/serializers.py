@@ -740,6 +740,10 @@ class MobileVendorSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+# ============================================
+# serializers.py - VendorActivitySerializer (corrigé)
+# ============================================
+
 class VendorActivitySerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
     activity_type_display = serializers.CharField(source='get_activity_type_display', read_only=True)
@@ -751,9 +755,13 @@ class VendorActivitySerializer(serializers.ModelSerializer):
         model = VendorActivity
         fields = [
             'id', 'vendor', 'vendor_name', 'activity_type', 'activity_type_display',
-            'timestamp', 'location', 'notes', 'related_order', 'order_items','quantity_assignes','quantity_sales',
-            'total_products', 'total_amount', 'created_at'
+            'timestamp', 'location', 'notes', 'related_order', 'order_items',
+            'quantity_assignes', 'quantity_sales', 'total_products', 'total_amount', 
+            'created_at', 'quantity_restante'
         ]
+        extra_kwargs = {
+            'quantity_restante': {'read_only': True}  # Important : rendre en lecture seule
+        }
 
     def get_total_products(self, obj):
         if obj.related_order:
@@ -762,8 +770,9 @@ class VendorActivitySerializer(serializers.ModelSerializer):
 
     def get_total_amount(self, obj):
         if obj.related_order:
-            return str(sum(item.total for item in obj.related_order.items.all()))  # Convert Decimal to string for JSON
+            return str(sum(item.total for item in obj.related_order.items.all()))
         return "0.00"
+
 
 class VendorActivitySummarySerializer(serializers.ModelSerializer):
     total_products = serializers.SerializerMethodField()
@@ -857,6 +866,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
 # serializers.py
 from .models import Sale
+from django.db import transaction
 
 class SaleSerializer(serializers.ModelSerializer):
     product_variant_name = serializers.CharField(source='product_variant.product.name', read_only=True)
@@ -882,6 +892,26 @@ class SaleSerializer(serializers.ModelSerializer):
             'vendor_activity'
         ]
         read_only_fields = ['created_at', 'updated_at', 'vendor']
+
+    def create(self, validated_data):
+        """
+        Création d'une vente avec gestion atomique
+        Le signal pre_save gérera automatiquement la mise à jour des quantités
+        """
+        with transaction.atomic():
+            # Le signal pre_save s'occupera de tout
+            sale = Sale.objects.create(**validated_data)
+            return sale
+    
+    def update(self, instance, validated_data):
+        """
+        Mise à jour d'une vente avec gestion atomique
+        """
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            return instance
 
 
 class PointOfSaleSerializers(serializers.ModelSerializer):

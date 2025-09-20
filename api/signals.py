@@ -54,47 +54,91 @@ def update_point_of_sale_stats(sender, instance, **kwargs):
         # Loguer l'erreur mais ne pas bloquer l'application
         print(f"Erreur lors de la mise à jour des stats du point de vente: {e}")
 
+# # signals.py
+# from django.db.models.signals import pre_save, post_save
+# from django.dispatch import receiver
+# from django.core.exceptions import ValidationError
+# from .models import Sale, VendorActivity
+# import logging
 
-# signals.py
-from django.db.models.signals import pre_save, post_save
-from django.dispatch import receiver
-from django.core.exceptions import ValidationError
-from .models import Sale
+# logger = logging.getLogger(__name__)
 
-@receiver(pre_save, sender=Sale)
-def valider_vente_avant_sauvegarde(sender, instance, **kwargs):
-    print(f"🔵 Signal pre_save déclenché pour Sale #{instance.id if instance.id else 'Nouveau'}")
-    
-    if instance.vendor_activity:
-        print(f"   Activité vendeur: {instance.vendor_activity.id}")
-        print(f"   Quantité demandée: {instance.quantity}")
-        print(f"   Ventes actuelles: {instance.vendor_activity.quantity_sales}")
-        print(f"   Quantité assignée: {instance.vendor_activity.quantity_assignes}")
-        print(f"   Peut vendre: {instance.vendor_activity.peut_vendre(instance.quantity)}")
+# @receiver(pre_save, sender=Sale)
+# def valider_vente_avant_sauvegarde(sender, instance, **kwargs):
+#     """
+#     Validation stricte avant sauvegarde d'une vente
+#     """
+#     if instance.vendor_activity:
+#         # Recharger l'activité pour avoir les données les plus récentes
+#         try:
+#             fresh_activity = VendorActivity.objects.get(id=instance.vendor_activity.id)
+#         except VendorActivity.DoesNotExist:
+#             raise ValidationError("L'activité de vendeur associée n'existe pas")
         
-        if not instance.vendor_activity.peut_vendre(instance.quantity):
-            raise ValidationError(
-                f"Impossible de vendre {instance.quantity} unités. "
-                f"Quantité restante: {instance.vendor_activity.quantite_restante()}"
-            )
-    else:
-        print("   ⚠️ Aucune activité vendeur associée")
+#         # Vérifier la cohérence de l'activité
+#         if not fresh_activity.verifier_coherence():
+#             logger.warning(f"Incohérence détectée dans l'activité {fresh_activity.id}")
+#             fresh_activity.corriger_quantite_restante()
+#             fresh_activity.refresh_from_db()
+        
+#         # Validation principale
+#         if instance.quantity > fresh_activity.quantity_restante:
+#             raise ValidationError(
+#                 f"Impossible de vendre {instance.quantity} unités. "
+#                 f"Quantité restante: {fresh_activity.quantity_restante}"
+#             )
+        
+#         # Validation quantité positive
+#         if instance.quantity <= 0:
+#             raise ValidationError("La quantité de vente doit être positive")
+        
+#         print(f"✅ Validation vente OK: {instance.quantity} unités sur {fresh_activity.quantity_restante} disponibles")
 
-@receiver(post_save, sender=Sale)
-def incrementer_ventes_apres_sauvegarde(sender, instance, created, **kwargs):
-    print(f"🟢 Signal post_save déclenché pour Sale #{instance.id}")
-    print(f"   Créé: {created}")
-    
-    if created and instance.vendor_activity:
-        print(f"   Tentative d'incrémenter les ventes de {instance.quantity}")
-        try:
-            from .models import VendorActivity
-            activity = VendorActivity.objects.get(id=instance.vendor_activity.id)
-            activity.incrementer_ventes(instance.quantity)
-            print(f"   ✅ Ventes incrémentées avec succès")
-        except ValidationError as e:
-            print(f"   ❌ Erreur: {e}")
-            instance.delete()
-            raise e
-    else:
-        print("   ⏭️ Aucune action nécessaire")
+# @receiver(post_save, sender=Sale)
+# def incrementer_ventes_apres_sauvegarde(sender, instance, created, **kwargs):
+#     """
+#     Incrémentation automatique des ventes après sauvegarde
+#     """
+#     if created and instance.vendor_activity:
+#         try:
+#             # Recharger pour éviter les problèmes de cache
+#             fresh_activity = VendorActivity.objects.get(id=instance.vendor_activity.id)
+            
+#             # Incrémenter les ventes
+#             fresh_activity.incrementer_ventes(instance.quantity)
+            
+#             logger.info(
+#                 f"Vente enregistrée: {instance.quantity} unités "
+#                 f"pour l'activité {fresh_activity.id}"
+#             )
+            
+#         except VendorActivity.DoesNotExist:
+#             logger.error(f"Activité {instance.vendor_activity.id} introuvable lors de l'incrémentation")
+#         except ValidationError as e:
+#             logger.error(f"Erreur lors de l'incrémentation des ventes: {e}")
+#             # On ne re-raise pas l'erreur ici car la vente est déjà sauvegardée
+#             # Mais on pourrait implémenter une logique de rollback si nécessaire
+#         except Exception as e:
+#             logger.error(f"Erreur inattendue lors de l'incrémentation: {e}")
+
+# # Signal optionnel pour debug
+# @receiver(post_save, sender=VendorActivity)
+# def debug_vendor_activity_save(sender, instance, created, **kwargs):
+#     """
+#     Debug: Log les informations après sauvegarde d'une activité
+#     """
+#     if created:
+#         print(f"🆕 Nouvelle activité créée:")
+#         print(f"   ID: {instance.id}")
+#         print(f"   Type: {instance.activity_type}")
+#         print(f"   Quantité assignée: {instance.quantity_assignes}")
+#         print(f"   Quantité restante: {instance.quantity_restante}")
+#         print(f"   Commande liée: {instance.related_order.id if instance.related_order else 'Aucune'}")
+        
+#         # Vérification de cohérence
+#         if not instance.verifier_coherence():
+#             logger.warning(f"Incohérence détectée dans la nouvelle activité {instance.id}")
+#     else:
+#         print(f"📝 Activité {instance.id} mise à jour:")
+#         print(f"   Quantité restante: {instance.quantity_restante}")
+#         print(f"   Ventes: {instance.quantity_sales}")

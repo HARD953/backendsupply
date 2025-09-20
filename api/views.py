@@ -1005,8 +1005,22 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(vendors, many=True)
         return Response(serializer.data)
     
+
+
+# ============================================
+# views.py - VendorActivityViewSet (corrigé)
+# ============================================
+from rest_framework import viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
+
 class VendorActivityViewSet(viewsets.ModelViewSet):
-    queryset = VendorActivity.objects.select_related('vendor', 'related_order').prefetch_related('related_order__items', 'related_order__items__product_variant', 'related_order__items__product_variant__product').all()
+    queryset = VendorActivity.objects.select_related(
+        'vendor', 'related_order'
+    ).prefetch_related(
+        'related_order__items',
+        'related_order__items__product_variant',
+        'related_order__items__product_variant__product'
+    ).all()
     serializer_class = VendorActivitySerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['vendor', 'activity_type', 'related_order']
@@ -1014,18 +1028,45 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
     ordering = ['-timestamp']
 
     def get_queryset(self):
-        """
-        Surcharge pour filtrer les activités où quantity_assignes > quantity_sales
-        """
         queryset = super().get_queryset()
-        
-        # Filtrer seulement les activités où quantity_assignes > quantity_sales
-        queryset = queryset.filter(quantity_assignes__gt=models.F('quantity_sales'))
-        
+                
+        # Vérification stricte - l'utilisateur doit être authentifié ET avoir un vendeur associé
+        if not self.request.user.is_authenticated or self.request.user.is_anonymous:
+            return queryset.none()
+                
+        try:
+            # Récupérer le vendeur associé à l'utilisateur connecté
+            vendor = self.request.user.mobile_vendor
+            queryset = queryset.filter(vendor=vendor)
+            print(queryset)
+            print("Issssssssa")
+        except MobileVendor.DoesNotExist:
+            return queryset.none()
+        except AttributeError:
+            return queryset.none()
+                
+        # Filtrer seulement les activités où il reste du stock
+        queryset = queryset.filter(quantity_restante__gt=0)
+                
         return queryset
+        
+    # def perform_create(self, serializer):
+    #     # S'assurer que quantity_restante = quantity_assignes à la création
+    #     quantity_assignes = serializer.validated_data.get('quantity_assignes', 0)
+    #     print(f"Quantité assignée: {quantity_assignes}")
+    #     # CORRECTION : Passer quantity_restante comme paramètre à save()
+    #     serializer.save(quantity_restante=quantity_assignes)
 
-    def perform_update(self, serializer):
+    def perform_create(self, serializer):
+        quantity_assignes = serializer.validated_data.get('quantity_assignes', 0)
         instance = serializer.save()
+        instance.quantity_restante = quantity_assignes
+        instance.save()
+    
+    def perform_update(self, serializer):
+        # CORRECTION : Compléter la méthode perform_update
+        instance = serializer.save()
+        return instance
 
 class VendorActivitySummaryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VendorActivity.objects.select_related('related_order').prefetch_related('related_order__items').all()
@@ -1185,18 +1226,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             # If the MobileVendor instance doesn't exist for this user
             raise serializers.ValidationError({"error": "Profil vendeur mobile non trouvé pour cet utilisateur"})
         
-        # Save the sale with the MobileVendor instance
-        sale = serializer.save(vendor=vendor_instance)
+        serializer.save(vendor=vendor_instance)
         
-        # Mettre à jour le stock du produit
-        product_variant = sale.product_variant
-        if product_variant.current_stock >= sale.quantity:
-            product_variant.current_stock -= sale.quantity
-            product_variant.save()
-        else:
-            # Annuler la vente si stock insuffisant
-            sale.delete()
-            raise serializers.ValidationError({"error": "Stock insuffisant"})
 
     def perform_update(self, serializer):
         """
