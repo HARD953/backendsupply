@@ -19,6 +19,8 @@ from .views import (
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet,PurchaseViewSetData
 
+from . import viewser 
+
 from .views_rapports import (
     SalesAnalyticsView, InventoryStatusView,
     POSPerformanceView, CategorySalesView,
@@ -133,6 +135,10 @@ urlpatterns = [
     # path('customer-sales-optimized/', views.get_customer_sales_optimized, name='customer-sales-optimized'),
     path('carte/', views.get_customer_sales, name='customer-sales-sales'),
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
+
+    path('reports/', viewser.ReportView.as_view(), name='reports'),
+    path('reports/generate/', viewser.ReportListCreateView.as_view(), name='generate-report'),
+    path('reports/dashboard/', viewser.DashboardDataView.as_view(), name='dashboard-data'),
 ]
 
 # # Créer répertoire et environnement virtuel
