@@ -22,12 +22,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-*sa2bb&922p(l)kkrnx$@dv)zkt)^nry#)vk851suuom8i5_4w'
+SECRET_KEY = config('SECRET_KEY', default='clé-par-défaut-pour-dev-uniquement')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+# DEBUG = config('DEBUG', default=False, cast=bool)
+
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
 
 # lanfiatech/settings.py
@@ -58,9 +60,9 @@ MIDDLEWARE = [
 
 # Configuration de l'authentification (optionnel, si tu utilises JWT)
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
+    # 'DEFAULT_AUTHENTICATION_CLASSES': [
+    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
+    # ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
@@ -97,6 +99,10 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 # }
 
 DATABASE_URL = config('DATABASE_URL', default='postgresql://chain_x3sl_user:wWfhmbDwm79wTAiVinXZ9skPQiViNwzB@dpg-d37bsmbuibrs738u2grg-a.oregon-postgres.render.com/chain_x3sl')
+
+
+# # PAR une configuration pour votre VPS :
+# DATABASE_URL = config('DATABASE_URL', default='postgresql://lanfia_user:votre_mot_de_passe@localhost/lanfia_db')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL),  # Utilisez dj-database-url pour parser l'URL
 }
@@ -141,6 +147,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 STATIC_URL = 'static/'
 
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 from datetime import timedelta
 
 # CORS_ALLOW_ALL_ORIGINS = True
@@ -156,6 +165,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://*",
     "https://*",
 ]
+
+# # AJOUTER à la place :
+# CORS_ALLOWED_ORIGINS = [
+#     "https://votre-domaine.com",
+#     "https://www.votre-domaine.com",
+#     "http://localhost:3000",  # Pour le développement local
+# ]
 
 # CORS_ALLOWED_ORIGINS =['http://localhost:3000/','http://localhost:3000']
 
@@ -191,3 +207,13 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# # AJOUTER à la fin du fichier :
+# # Security settings for production
+# if not DEBUG:
+#     SECURE_SSL_REDIRECT = True
+#     SESSION_COOKIE_SECURE = True
+#     CSRF_COOKIE_SECURE = True
+#     SECURE_BROWSER_XSS_FILTER = True
+#     SECURE_CONTENT_TYPE_NOSNIFF = True
+#     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

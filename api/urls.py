@@ -1,4 +1,5 @@
 from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     CategoryListCreateView, CategoryDetailView,
     SupplierListCreateView, SupplierDetailView,
@@ -19,23 +20,18 @@ from .views import (
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet,PurchaseViewSetData
 
-from . import viewser 
-
 from .views_rapports import (
     SalesAnalyticsView, InventoryStatusView,
     POSPerformanceView, CategorySalesView,
     SalesTrendView
 )
-
-# urls.py
-from django.urls import path
-from . import views
+from .viewser import ReportViewSet, DashboardViewSet
 from .views import UserProfileViewSet
 
-from rest_framework.routers import DefaultRouter
+from . import views
+
 # Création du routeur
 router = DefaultRouter()
-
 router.register(r'mobile-vendors', MobileVendorViewSet, basename='mobile-vendor')
 router.register(r'vendor-activities', VendorActivityViewSet, basename='vendor-activity')
 router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vendor-performance')
@@ -44,9 +40,6 @@ router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, base
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
-
-
-
 
 urlpatterns = [
     # Dashboard
@@ -119,7 +112,6 @@ urlpatterns = [
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
     path('notifications/<int:id>/', NotificationDetailView.as_view(), name='notification-detail'),
 
-    path('', include(router.urls)),
 
     # Endpoint supplémentaire pour le dashboard
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
@@ -130,39 +122,7 @@ urlpatterns = [
     path('pos-performance/', POSPerformanceView.as_view(), name='pos-performance'),
     path('category-sales/', CategorySalesView.as_view(), name='category-sales'),
     path('sales-trend/', SalesTrendView.as_view(), name='sales-trend'),
-
-    # path('customer-sales/', views.get_customer_sales, name='customer-sales'),
-    # path('customer-sales-optimized/', views.get_customer_sales_optimized, name='customer-sales-optimized'),
     path('carte/', views.get_customer_sales, name='customer-sales-sales'),
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
-
-    path('reports/', viewser.ReportView.as_view(), name='reports'),
-    path('reports/generate/', viewser.ReportListCreateView.as_view(), name='generate-report'),
-    path('reports/dashboard/', viewser.DashboardDataView.as_view(), name='dashboard-data'),
+    path('', include(router.urls)),
 ]
-
-# # Créer répertoire et environnement virtuel
-# mkdir lanfiatech-backend
-# cd lanfiatech-backend
-# python -m venv venv
-# source venv/bin/activate  # ou venv\Scripts\activate sur Windows
-
-# # Installer les packages
-# pip install django djangorestframework django-filter pillow
-# pip freeze > requirements.txt
-
-# # Créer projet et application
-# django-admin startproject lanfiatech .
-# python manage.py startapp api
-
-# # Ajouter 'rest_framework' et 'api' à INSTALLED_APPS dans settings.py
-
-# # Appliquer migrations
-# python manage.py makemigrations
-# python manage.py migrate
-
-# # Créer superutilisateur
-# python manage.py createsuperuser
-
-# # Lancer le serveur
-# python manage.py runserver

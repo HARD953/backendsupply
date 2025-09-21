@@ -1,93 +1,123 @@
+# serializers.py
 from rest_framework import serializers
-from django.db.models import Sum, Count, Avg, F, Q, When, Case, Value, IntegerField
-from django.db.models.functions import TruncDay, TruncWeek, TruncMonth, ExtractWeek, ExtractMonth
+from django.db.models import Sum, Count, Avg, F, Q, Value, DecimalField
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth, TruncYear
 from django.utils import timezone
-from datetime import timedelta
+from datetime import datetime, timedelta
 from .models import (
-    Product, ProductVariant, Order, OrderItem, PointOfSale, 
-    Category, Supplier, UserProfile, MobileVendor, VendorActivity, Purchase, Sale
+    PointOfSale, Product, ProductVariant, Order, OrderItem, 
+    MobileVendor, VendorActivity, Purchase, Sale, Category
 )
 
-class ReportFilterSerializer(serializers.Serializer):
-    """Serializer pour les filtres de rapport"""
-    report_type = serializers.ChoiceField(choices=[
-        ('ventes', 'Ventes'),
-        ('stocks', 'Stocks'),
-        ('clients', 'Clients'),
-        ('performance', 'Performance'),
-        ('commandes', 'Commandes'),
-        ('fournisseurs', 'Fournisseurs')
-    ], required=False)
+class DateRangeSerializer(serializers.Serializer):
     start_date = serializers.DateField(required=False)
     end_date = serializers.DateField(required=False)
-    point_of_sale = serializers.PrimaryKeyRelatedField(
-        queryset=PointOfSale.objects.all(), required=False
-    )
-    category = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.all(), required=False
-    )
-    vendor = serializers.PrimaryKeyRelatedField(
-        queryset=MobileVendor.objects.all(), required=False
-    )
+    point_of_sale_id = serializers.IntegerField(required=False)
+    vendor_id = serializers.IntegerField(required=False)
+    category_id = serializers.IntegerField(required=False)
+    region = serializers.CharField(required=False)
+    commune = serializers.CharField(required=False)
 
 class SalesReportSerializer(serializers.Serializer):
-    """Serializer pour le rapport des ventes"""
-    total = serializers.DecimalField(max_digits=15, decimal_places=2)
-    evolution = serializers.CharField()
-    point_of_sale = serializers.CharField()
-    chart_data = serializers.ListField()
-    by_product = serializers.ListField()
-    by_category = serializers.ListField()
-    table_data = serializers.ListField()
-
-class StockReportSerializer(serializers.Serializer):
-    """Serializer pour le rapport des stocks"""
-    total_products = serializers.IntegerField()
-    low_stock = serializers.IntegerField()
-    point_of_sale = serializers.CharField()
-    chart_data = serializers.ListField()
-    by_category = serializers.ListField()
-    status_distribution = serializers.ListField()
-
-class ClientReportSerializer(serializers.Serializer):
-    """Serializer pour le rapport clients"""
-    new_clients = serializers.IntegerField()
-    returning_clients = serializers.IntegerField()
-    point_of_sale = serializers.CharField()
-    chart_data = serializers.ListField()
-    by_region = serializers.ListField()
-    by_commune = serializers.ListField()
-
-class OrderReportSerializer(serializers.Serializer):
-    """Serializer pour le rapport des commandes"""
-    total_orders = serializers.IntegerField()
-    completed = serializers.IntegerField()
-    pending = serializers.IntegerField()
-    cancelled = serializers.IntegerField()
-    point_of_sale = serializers.CharField()
-    total_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)
-    average_order_value = serializers.DecimalField(max_digits=10, decimal_places=2)
-    chart_data = serializers.ListField()
-    by_status = serializers.ListField()
-    by_category = serializers.ListField()
-
-class SupplierReportSerializer(serializers.Serializer):
-    """Serializer pour le rapport fournisseurs"""
-    total_suppliers = serializers.IntegerField()
-    active_suppliers = serializers.IntegerField()
-    total_products = serializers.IntegerField()
-    point_of_sale = serializers.CharField()
-    chart_data = serializers.ListField()
-    by_supplier = serializers.ListField()
-    by_category = serializers.ListField()
-
-class GeneratedReportSerializer(serializers.Serializer):
-    """Serializer pour les rapports générés"""
-    id = serializers.IntegerField()
-    title = serializers.CharField()
-    type = serializers.CharField()
     period = serializers.CharField()
-    generated_at = serializers.DateTimeField()
-    download_url = serializers.CharField()
-    size = serializers.CharField()
-    data = serializers.DictField()
+    total_sales = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_orders = serializers.IntegerField()
+    average_order_value = serializers.DecimalField(max_digits=10, decimal_places=2)
+    growth_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
+
+class ProductPerformanceSerializer(serializers.ModelSerializer):
+    total_sold = serializers.IntegerField()
+    total_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)
+    category_name = serializers.CharField(source='category.name')
+
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'category_name', 'total_sold', 'total_revenue']
+
+class VendorPerformanceSerializer(serializers.ModelSerializer):
+    total_sales = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_orders = serializers.IntegerField()
+    average_daily_sales = serializers.DecimalField(max_digits=10, decimal_places=2)
+    performance_score = serializers.FloatField()
+    point_of_sale_name = serializers.CharField(source='point_of_sale.name')
+    total_activities = serializers.IntegerField()
+    completed_activities = serializers.IntegerField()
+
+    class Meta:
+        model = MobileVendor
+        fields = [
+            'id', 'first_name', 'last_name', 'phone', 'point_of_sale_name',
+            'total_sales', 'total_orders', 'average_daily_sales', 
+            'performance_score', 'total_activities', 'completed_activities',
+            'status', 'vehicle_type'
+        ]
+
+class POSPerformanceSerializer(serializers.ModelSerializer):
+    total_sales = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_orders = serializers.IntegerField()
+    average_order_value = serializers.DecimalField(max_digits=10, decimal_places=2)
+    growth_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
+    top_product = serializers.CharField()
+    total_vendors = serializers.IntegerField()
+    active_vendors = serializers.IntegerField()
+
+    class Meta:
+        model = PointOfSale
+        fields = [
+            'id', 'name', 'type', 'region', 'commune', 'total_sales', 
+            'total_orders', 'average_order_value', 'growth_percentage', 
+            'top_product', 'total_vendors', 'active_vendors'
+        ]
+
+class CategorySalesSerializer(serializers.ModelSerializer):
+    total_sales = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_units = serializers.IntegerField()
+    percentage_of_total = serializers.DecimalField(max_digits=5, decimal_places=2)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'total_sales', 'total_units', 'percentage_of_total']
+
+class TimeSeriesSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    value = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+class VendorActivitySerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.full_name')
+    point_of_sale_name = serializers.CharField(source='vendor.point_of_sale.name')
+    order_reference = serializers.CharField(source='related_order.id', allow_null=True)
+
+    class Meta:
+        model = VendorActivity
+        fields = [
+            'id', 'vendor_name', 'point_of_sale_name', 'activity_type',
+            'timestamp', 'quantity_assignes', 'quantity_sales', 
+            'quantity_restante', 'order_reference', 'notes'
+        ]
+
+class PurchaseSerializer(serializers.ModelSerializer):
+    vendor_name = serializers.CharField(source='vendor.full_name', allow_null=True)
+    point_of_sale_name = serializers.CharField(source='vendor.point_of_sale.name', allow_null=True)
+
+    class Meta:
+        model = Purchase
+        fields = [
+            'id', 'first_name', 'last_name', 'vendor_name', 'point_of_sale_name',
+            'zone', 'amount', 'purchase_date', 'base', 'pushcard_type',
+            'latitude', 'longitude', 'phone'
+        ]
+
+class VendorGeoSerializer(serializers.ModelSerializer):
+    point_of_sale_name = serializers.CharField(source='point_of_sale.name')
+    point_of_sale_region = serializers.CharField(source='point_of_sale.region')
+    point_of_sale_commune = serializers.CharField(source='point_of_sale.commune')
+    last_activity = serializers.DateTimeField(source='activities.last().timestamp', allow_null=True)
+    total_sales_today = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        model = MobileVendor
+        fields = [
+            'id', 'first_name', 'last_name', 'phone', 'point_of_sale_name',
+            'point_of_sale_region', 'point_of_sale_commune', 'vehicle_type',
+            'status', 'last_activity', 'total_sales_today', 'latitude', 'longitude'
+        ]

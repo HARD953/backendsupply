@@ -401,22 +401,46 @@ class SimpleProductSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'sku', 'status']
 
 class StockMovementSerializer(serializers.ModelSerializer):
+    # Champs en lecture seule
     product_variant = ProductVariantSerializer(read_only=True)
-    # product_variant_id = serializers.PrimaryKeyRelatedField(
-    #     queryset=ProductVariant.objects.all(), source='product_variant', write_only=True
-    # )
     product_name = serializers.CharField(source='product_variant.product.name', read_only=True)
     user = serializers.CharField(source='user.username', read_only=True)
-    # user_id = serializers.PrimaryKeyRelatedField(
-    #     queryset=User.objects.all(), source='user', write_only=True, allow_null=True
-    # )
+    
+    # Champs en écriture seule pour la création
+    product_variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductVariant.objects.all(), 
+        source='product_variant', 
+        write_only=True
+    )
 
     class Meta:
         model = StockMovement
         fields = [
-            'id', 'product_variant', 'product_name',
+            'id', 'product_variant', 'product_variant_id', 'product_name',
             'type', 'quantity', 'date', 'reason', 'user', 'created_at'
         ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+    def validate_quantity(self, value):
+        """Valider que la quantité est positive"""
+        if value <= 0:
+            raise serializers.ValidationError("La quantité doit être supérieure à 0")
+        return value
+
+    def validate(self, data):
+        """Validation personnalisée"""
+        product_variant = data.get('product_variant')
+        movement_type = data.get('type')
+        quantity = data.get('quantity')
+
+        # Vérifier que pour une sortie, on a assez de stock
+        if movement_type == 'sortie' and product_variant:
+            if quantity > product_variant.current_stock:
+                raise serializers.ValidationError({
+                    "quantity": f"Stock insuffisant. Stock actuel: {product_variant.current_stock}"
+                })
+
+        return data
 
         
 

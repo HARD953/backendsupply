@@ -24,6 +24,8 @@ from django.utils import timezone
 from decimal import Decimal
 from rest_framework import serializers
 
+
+
 # Views existantes (inchangées sauf indication)
 class CategoryListCreateView(generics.ListCreateAPIView):
     queryset = Category.objects.all()
@@ -248,6 +250,12 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
                 )
         serializer.save()
 
+# Views
+from rest_framework import generics, permissions
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+
 class StockMovementListCreateView(generics.ListCreateAPIView):
     serializer_class = StockMovementSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -267,6 +275,16 @@ class StockMovementListCreateView(generics.ListCreateAPIView):
         return StockMovement.objects.filter(
             product_variant__product__point_of_sale__in=user_pos
         ).select_related('product_variant__product', 'user').order_by('-date')
+
+    def get_serializer(self, *args, **kwargs):
+        # Filtrer les ProductVariant disponibles pour l'utilisateur
+        serializer = super().get_serializer(*args, **kwargs)
+        if hasattr(serializer, 'fields') and 'product_variant_id' in serializer.fields:
+            user_pos = self.request.user.profile.points_of_sale.all()
+            serializer.fields['product_variant_id'].queryset = ProductVariant.objects.filter(
+                product__point_of_sale__in=user_pos
+            )
+        return serializer
 
     def perform_create(self, serializer):
         # Vérifier que le produit fait partie d'un POS accessible
