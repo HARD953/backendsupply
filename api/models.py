@@ -659,6 +659,11 @@ class VendorActivity(models.Model):
         ('other', 'Autre'),
     ]
 
+    STATUS_CHOICES = [
+        ('comptabilise', 'Comptabilise'),
+        ('en_attente', 'En attente'),
+    ]
+
     vendor = models.ForeignKey(
         'MobileVendor', 
         on_delete=models.CASCADE, 
@@ -679,7 +684,7 @@ class VendorActivity(models.Model):
     quantity_assignes = models.PositiveIntegerField(default=0)
     quantity_restante = models.PositiveIntegerField(default=0)
     quantity_sales = models.PositiveIntegerField(default=0)
-    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='en_attente')
     class Meta:
         verbose_name = "Activité de vendeur"
         verbose_name_plural = "Activités des vendeurs"

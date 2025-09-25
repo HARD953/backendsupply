@@ -422,14 +422,22 @@ class OrderDetailView(generics.RetrieveUpdateDestroyAPIView):
         ).select_related('point_of_sale')
 
     def perform_update(self, serializer):
-        # Vérifier que le nouveau POS fait partie de ceux de l'utilisateur
-        point_of_sale_id = serializer.validated_data.get('point_of_sale', {}).get('id')
-        if point_of_sale_id:
-            user_pos_ids = [str(pos.id) for pos in self.request.user.profile.points_of_sale.all()]
-            if str(point_of_sale_id) not in user_pos_ids:
+        point_of_sale = serializer.validated_data.get('point_of_sale')
+        
+        if point_of_sale:
+            # Vérifier directement si l'utilisateur a accès à ce POS
+            if hasattr(point_of_sale, 'id'):
+                point_of_sale_id = point_of_sale.id
+            else:
+                point_of_sale_id = point_of_sale
+            
+            has_access = self.request.user.profile.points_of_sale.filter(id=point_of_sale_id).exists()
+            
+            if not has_access:
                 raise serializers.ValidationError(
                     {"point_of_sale": "Vous n'avez pas accès à ce point de vente"}
                 )
+        
         serializer.save()
 
 class DisputeListCreateView(generics.ListCreateAPIView):
@@ -1047,7 +1055,7 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-                
+        print("Issssssssa")
         # Vérification stricte - l'utilisateur doit être authentifié ET avoir un vendeur associé
         if not self.request.user.is_authenticated or self.request.user.is_anonymous:
             return queryset.none()
@@ -1055,9 +1063,12 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
         try:
             # Récupérer le vendeur associé à l'utilisateur connecté
             vendor = self.request.user.mobile_vendor
+            print("maman")
+            print(vendor)
+            print("papa")
             queryset = queryset.filter(vendor=vendor)
             print(queryset)
-            print("Issssssssa")
+            print("maman")
         except MobileVendor.DoesNotExist:
             return queryset.none()
         except AttributeError:

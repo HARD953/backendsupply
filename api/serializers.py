@@ -101,11 +101,19 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = UserCreateSerializer(required=True)
-    points_of_sale = serializers.PrimaryKeyRelatedField(
+    
+    # CORRECTION ICI : Utiliser le serializer au lieu de PrimaryKeyRelatedField
+    points_of_sale = PointOfSaleSerializer(many=True, read_only=True)
+    
+    # Champ pour l'écriture des points de vente (garder PrimaryKeyRelatedField pour l'écriture)
+    points_of_sale_ids = serializers.PrimaryKeyRelatedField(
         queryset=PointOfSale.objects.all(),
         many=True,
+        source='points_of_sale',
+        write_only=True,
         required=False
     )
+    
     role_name = serializers.CharField(source='role.name', read_only=True)
     
     # Champ pour l'écriture du rôle
@@ -121,7 +129,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = [
             'id', 'user', 'phone', 'location', 'role', 'join_date', 
-            'last_login', 'status', 'avatar', 'points_of_sale',
+            'last_login', 'status', 'avatar', 'points_of_sale', 'points_of_sale_ids',
             'establishment_name', 'establishment_phone', 'establishment_email',
             'establishment_address', 'establishment_type', 'establishment_registration_date',
             'owner',

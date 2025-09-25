@@ -60,9 +60,9 @@ MIDDLEWARE = [
 
 # Configuration de l'authentification (optionnel, si tu utilises JWT)
 REST_FRAMEWORK = {
-    # 'DEFAULT_AUTHENTICATION_CLASSES': [
-    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
-    # ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
@@ -91,21 +91,13 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 #Database
 #https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-DATABASE_URL = config('DATABASE_URL', default='postgresql://chain_x3sl_user:wWfhmbDwm79wTAiVinXZ9skPQiViNwzB@dpg-d37bsmbuibrs738u2grg-a.oregon-postgres.render.com/chain_x3sl')
-
-
-# # PAR une configuration pour votre VPS :
-# DATABASE_URL = config('DATABASE_URL', default='postgresql://lanfia_user:votre_mot_de_passe@localhost/lanfia_db')
 DATABASES = {
-    'default': dj_database_url.parse(DATABASE_URL),  # Utilisez dj-database-url pour parser l'URL
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -161,10 +153,10 @@ from datetime import timedelta
 CORS_ALLOW_ALL_ORIGINS = True
 
 # OU Option 2 : Autoriser des origines spécifiques (toutes)
-CORS_ALLOWED_ORIGINS = [
-    "http://*",
-    "https://*",
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://*",
+#     "https://*",
+# ]
 
 # # AJOUTER à la place :
 # CORS_ALLOWED_ORIGINS = [
