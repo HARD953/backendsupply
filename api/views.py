@@ -78,15 +78,41 @@ class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 class PointOfSaleListCreateView(generics.ListCreateAPIView):
-    queryset = PointOfSale.objects.all()
     serializer_class = PointOfSaleSerializerCreate
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['type', 'status', 'district', 'region', 'commune']
     search_fields = ['name', 'owner', 'email']
 
+    def get_queryset(self):
+        """
+        Retourne uniquement les points de vente rattachés au profil de l'utilisateur connecté.
+        Pour les requêtes non authentifiées (readonly), retourne tous les points de vente.
+        """
+        if self.request.user.is_authenticated:
+            try:
+                # Récupère les points de vente via la relation ManyToMany du UserProfile
+                return self.request.user.profile.points_of_sale.all()
+            except UserProfile.DoesNotExist:
+                # Si l'utilisateur n'a pas de profil, retourne un queryset vide
+                return PointOfSale.objects.none()
+        return PointOfSale.objects.all()
+
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        """
+        Lors de la création, associe le point de vente à l'utilisateur connecté
+        ET l'ajoute à ses points de vente dans le profil
+        """
+        point_of_sale = serializer.save(user=self.request.user)
+        
+        # Ajoute aussi le point de vente au profil de l'utilisateur
+        try:
+            profile = self.request.user.profile
+            profile.points_of_sale.add(point_of_sale)
+        except UserProfile.DoesNotExist:
+            # Crée le profil si il n'existe pas
+            profile = UserProfile.objects.create(user=self.request.user)
+            profile.points_of_sale.add(point_of_sale)
 
 class PointOfSaleDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = PointOfSale.objects.all()
