@@ -1613,92 +1613,137 @@ def get_customer_sales(request):
         if not request.user.is_authenticated:
             return JsonResponse({'error': 'Authentication required'}, status=401)
         
-        # Récupérer le MobileVendor associé à l'utilisateur connecté
-        try:
-            vendor = MobileVendor.objects.get(user=request.user)
-        except MobileVendor.DoesNotExist:
-            return JsonResponse({'error': 'Vendor profile not found'}, status=404)
-        
         # Récupérer les dates de début et fin
         start_date_str = request.GET.get('start_date')
         end_date_str = request.GET.get('end_date')
         
-        # Convertir les dates
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else timezone.now().date() - timezone.timedelta(days=30)
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
-        end_date = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        # Définir les dates par défaut (mois courant) si non fournies
+        today = timezone.now().date()
         
-        # Récupérer les achats du vendeur dans la période spécifiée
-        purchases = Purchase.objects.filter(
-            vendor=vendor,
-            purchase_date__gte=start_date,
-            purchase_date__lte=end_date
-        ).prefetch_related(
-            Prefetch('purchases', queryset=Sale.objects.select_related(
-                'product_variant', 
-                'product_variant__product',
-                'product_variant__format'
-            ))
-        )
+        if not start_date_str:
+            # Premier jour du mois courant
+            start_date = today.replace(day=1)
+        else:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         
-        customer_data = []
+        if not end_date_str:
+            # Dernier jour du mois courant
+            next_month = today.replace(day=28) + timezone.timedelta(days=4)  # Aller au mois suivant
+            end_date = next_month - timezone.timedelta(days=next_month.day)  # Dernier jour du mois
+        else:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         
-        for purchase in purchases:
-            # Récupérer toutes les ventes associées à cet achat
-            sales = purchase.purchases.all()
+        # Convertir en datetime avec heure pour la comparaison
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        
+        # Récupérer les points de vente de l'utilisateur connecté
+        user_points_of_sale = request.user.profile.points_of_sale.all()
+        
+        # Récupérer les MobileVendor associés à ces points de vente
+        vendors = MobileVendor.objects.filter(point_of_sale__in=user_points_of_sale)
+        
+        all_customer_data = []
+        grand_total_sales = 0
+        grand_total_quantity = 0
+        total_customers_count = 0
+        
+        # Parcourir tous les vendors de l'utilisateur
+        for vendor in vendors:
+            # Récupérer les achats du vendeur dans la période spécifiée
+            purchases = Purchase.objects.filter(
+                vendor=vendor,
+                purchase_date__gte=start_datetime,
+                purchase_date__lte=end_datetime
+            ).prefetch_related(
+                Prefetch('purchases', queryset=Sale.objects.select_related(
+                    'product_variant', 
+                    'product_variant__product',
+                    'product_variant__format'
+                ))
+            )
             
-            # Calculer les totaux
-            total_sales_amount = sales.aggregate(total=Sum('total_amount'))['total'] or 0
-            total_quantity = sales.aggregate(total=Sum('quantity'))['total'] or 0
+            customer_data = []
             
-            # Générer l'URL de la photo
-            photo_url = None
-            if purchase.photo:
-                photo_url = request.build_absolute_uri(purchase.photo.url)
+            for purchase in purchases:
+                # Récupérer toutes les ventes associées à cet achat
+                sales = purchase.purchases.all()
+                
+                # Calculer les totaux
+                total_sales_amount = sales.aggregate(total=Sum('total_amount'))['total'] or 0
+                total_quantity = sales.aggregate(total=Sum('quantity'))['total'] or 0
+                
+                # Générer l'URL de la photo
+                photo_url = None
+                if purchase.photo:
+                    photo_url = request.build_absolute_uri(purchase.photo.url)
+                
+                customer_data.append({
+                    'id': purchase.id,
+                    'full_name': purchase.full_name,
+                    'phone': purchase.phone,
+                    'zone': purchase.zone,
+                    'base': purchase.base,
+                    'pushcard_type': purchase.pushcard_type,
+                    'latitude': purchase.latitude,
+                    'longitude': purchase.longitude,
+                    'purchase_date': purchase.purchase_date.isoformat(),
+                    'photo_url': photo_url,
+                    'total_sales_amount': float(total_sales_amount),
+                    'total_quantity': total_quantity,
+                    'sales_count': sales.count(),
+                    'vendor_id': vendor.id,
+                    'vendor_name': f"{vendor.first_name} {vendor.last_name}",
+                    'point_of_sale': vendor.point_of_sale.name if vendor.point_of_sale else 'N/A',
+                    'sales_details': [
+                        {
+                            'product': sale.product_variant.product.name if sale.product_variant and sale.product_variant.product else 'N/A',
+                            'variant_id': sale.product_variant.id if sale.product_variant else None,
+                            'variant_name': str(sale.product_variant) if sale.product_variant else 'N/A',
+                            'format': sale.product_variant.format.name if sale.product_variant and sale.product_variant.format else 'N/A',
+                            'price': float(sale.product_variant.price) if sale.product_variant else 0.0,
+                            'quantity': sale.quantity,
+                            'amount': float(sale.total_amount),
+                            'date': sale.created_at.isoformat()
+                        }
+                        for sale in sales
+                    ]
+                })
             
-            customer_data.append({
-                'id': purchase.id,
-                'full_name': purchase.full_name,
-                'phone': purchase.phone,
-                'zone': purchase.zone,
-                'base': purchase.base,
-                'pushcard_type': purchase.pushcard_type,
-                'latitude': purchase.latitude,
-                'longitude': purchase.longitude,
-                'purchase_date': purchase.purchase_date.isoformat(),
-                'photo_url': photo_url,
-                'total_sales_amount': float(total_sales_amount),
-                'total_quantity': total_quantity,
-                'sales_count': sales.count(),
-                'sales_details': [
-                    {
-                        'product': sale.product_variant.product.name if sale.product_variant and sale.product_variant.product else 'N/A',
-                        'variant_id': sale.product_variant.id if sale.product_variant else None,  # ✅ ID au lieu de l'objet
-                        'variant_name': str(sale.product_variant) if sale.product_variant else 'N/A',  # ✅ String representation
-                        'format': sale.product_variant.format.name if sale.product_variant and sale.product_variant.format else 'N/A',
-                        'price': float(sale.product_variant.price) if sale.product_variant else 0.0,
-                        'quantity': sale.quantity,
-                        'amount': float(sale.total_amount),
-                        'date': sale.created_at.isoformat()
-                    }
-                    for sale in sales
-                ]
+            # Ajouter les données de ce vendor à la liste globale
+            all_customer_data.extend(customer_data)
+            
+            # Mettre à jour les totaux globaux
+            grand_total_sales += sum(customer['total_sales_amount'] for customer in customer_data)
+            grand_total_quantity += sum(customer['total_quantity'] for customer in customer_data)
+            total_customers_count += len(customer_data)
+        
+        # Grouper les données par vendeur pour les statistiques
+        vendors_summary = []
+        for vendor in vendors:
+            vendor_purchases = [c for c in all_customer_data if c['vendor_id'] == vendor.id]
+            vendors_summary.append({
+                'vendor_id': vendor.id,
+                'vendor_name': f"{vendor.first_name} {vendor.last_name}",
+                'point_of_sale': vendor.point_of_sale.name if vendor.point_of_sale else 'N/A',
+                'total_customers': len(vendor_purchases),
+                'total_sales': sum(customer['total_sales_amount'] for customer in vendor_purchases),
+                'total_quantity': sum(customer['total_quantity'] for customer in vendor_purchases)
             })
         
         return JsonResponse({
             'period': {
                 'start_date': start_date.strftime('%Y-%m-%d'),
-                'end_date': end_date.strftime('%Y-%m-%d')
+                'end_date': end_date.strftime('%Y-%m-%d'),
+                'period_type': 'custom' if start_date_str and end_date_str else 'current_month'
             },
-            'vendor': {
-                'id': vendor.id,
-                'full_name': vendor.full_name,
-                'point_of_sale': vendor.point_of_sale.name if vendor.point_of_sale else 'N/A'
-            },
-            'customers': customer_data,
-            'total_customers': len(customer_data),
-            'grand_total_sales': sum(customer['total_sales_amount'] for customer in customer_data),
-            'grand_total_quantity': sum(customer['total_quantity'] for customer in customer_data)
+            'user_points_of_sale': [pos.name for pos in user_points_of_sale],
+            'vendors_summary': vendors_summary,
+            'customers': all_customer_data,
+            'total_customers': total_customers_count,
+            'grand_total_sales': grand_total_sales,
+            'grand_total_quantity': grand_total_quantity,
+            'total_vendors': vendors.count()
         })
         
     except ValueError:
