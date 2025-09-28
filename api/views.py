@@ -1058,7 +1058,6 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
 
-
 # ============================================
 # views.py - VendorActivityViewSet (corrigé)
 # ============================================
@@ -1595,8 +1594,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             'total_sales': sum(item['total_sales'] for item in performance_data),
             'overall_performance': (
                 sum(item['total_revenue'] for item in performance_data) / 
-                sum(item['total_sales'] for item in performance_data) 
-                if sum(item['total_sales'] for item in performance_data) > 0 else 0
+                sum(item['total_revenue_TT'] for item in performance_data) 
+                if sum(item['total_revenue_TT'] for item in performance_data) > 0 else 0
             )
         }
         
