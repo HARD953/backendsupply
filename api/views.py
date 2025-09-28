@@ -1022,27 +1022,27 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         
         return Response(data)
 
-    @action(detail=True, methods=['get'])
-    def stats(self, request, pk=None):
-        vendor = self.get_object()
+    # @action(detail=True, methods=['get'])
+    # def stats(self, request, pk=None):
+    #     vendor = self.get_object()
         
-        # Calcul de la somme totale des ventes pour ce vendeur
-        total_sales = Sale.objects.filter(vendor=vendor).aggregate(
-            total=Sum('total_amount')
-        )['total'] or 0
+    #     # Calcul de la somme totale des ventes pour ce vendeur
+    #     total_sales = Sale.objects.filter(vendor=vendor).aggregate(
+    #         total=Sum('total_amount')
+    #     )['total'] or 0
         
-        stats = {
-            'total_sales': total_sales,  # Utilisation du vrai total des ventes
-            'active_days': VendorActivity.objects.filter(
-                vendor=vendor,
-                activity_type__in=['check_in', 'sale']
-            ).dates('timestamp', 'day').distinct().count(),
-            'current_performance': vendor.performance,
-            'last_month_performance': VendorPerformance.objects.filter(
-                vendor=vendor
-            ).order_by('-month').first().performance_score if VendorPerformance.objects.filter(vendor=vendor).exists() else 0
-        }
-        return Response(stats)
+    #     stats = {
+    #         'total_sales': total_sales,  # Utilisation du vrai total des ventes
+    #         'active_days': VendorActivity.objects.filter(
+    #             vendor=vendor,
+    #             activity_type__in=['check_in', 'sale']
+    #         ).dates('timestamp', 'day').distinct().count(),
+    #         'current_performance': vendor.performance,
+    #         'last_month_performance': VendorPerformance.objects.filter(
+    #             vendor=vendor
+    #         ).order_by('-month').first().performance_score if VendorPerformance.objects.filter(vendor=vendor).exists() else 0
+    #     }
+    #     return Response(stats)
 
     @action(detail=False, methods=['get'])
     def by_pos(self, request):
@@ -1490,14 +1490,19 @@ class SaleViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        # Récupérer le queryset de base filtré par vendeur et période
         sales_queryset = Sale.objects.filter(
-            vendor=vendor,
+        vendor=vendor,
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date
+        )
+        
+        # Données globales (tous vendeurs)
+        sales_queryset_TT = Sale.objects.filter(
             created_at__date__gte=start_date,
             created_at__date__lte=end_date
         )
         
-        # Agrégation des données par mois
+        # Agrégation des données du vendeur par mois
         monthly_data = (
             sales_queryset
             .annotate(
@@ -1514,19 +1519,51 @@ class SaleViewSet(viewsets.ModelViewSet):
             .order_by('year', 'month')
         )
         
+        # Agrégation des données globales par mois
+        monthly_data_TT = (
+            sales_queryset_TT
+            .annotate(
+                year=ExtractYear('created_at'),
+                month=ExtractMonth('created_at')
+            )
+            .values('year', 'month')
+            .annotate(
+                total_customers_TT=Count('customer', distinct=True),
+                total_revenue_TT=Sum('total_amount'),
+                total_products_sold_TT=Sum('quantity'),
+                total_sales_TT=Count('id')
+            )
+            .order_by('year', 'month')
+        )
+        
+        # Convertir monthly_data_TT en dictionnaire pour accès facile
+        tt_dict = {
+            (item['year'], item['month']): {
+                'total_revenue_TT': item['total_revenue_TT'],
+                'total_customers_TT': item['total_customers_TT'],
+                'total_products_sold_TT': item['total_products_sold_TT'],
+                'total_sales_TT': item['total_sales_TT']
+            }
+            for item in monthly_data_TT
+        }
+        
         # Calcul des indicateurs de performance mensuels
         performance_data = []
         for data in monthly_data:
             month_date = date(data['year'], data['month'], 1)
             month_name = month_date.strftime('%B %Y')
             
-            # Calcul de la performance (ex: ratio revenu/vente)
+            # Récupérer les données TT correspondantes
+            tt_data = tt_dict.get((data['year'], data['month']), {})
+            
+            # PERFORMANCE: Ratio entre les revenus du vendeur et les revenus globaux
+            # Indique la part de marché du vendeur
             performance_ratio = (
-                data['total_revenue'] / data['total_sales'] 
-                if data['total_sales'] > 0 else 0
+                data['total_revenue'] / tt_data.get('total_revenue_TT', 1) 
+                if tt_data.get('total_revenue_TT', 0) > 0 else 0
             )
             
-            # Calcul du panier moyen
+            # PANIER MOYEN: Basé sur les clients du vendeur (logique métier)
             average_basket = (
                 data['total_revenue'] / data['total_customers'] 
                 if data['total_customers'] > 0 else 0
@@ -1605,6 +1642,7 @@ from django.http import JsonResponse
 from .models import Purchase, Sale, MobileVendor
 from rest_framework.decorators import api_view
 from django.db.models import Prefetch
+
 
 @api_view(['GET'])
 def get_customer_sales(request):

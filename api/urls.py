@@ -27,12 +27,14 @@ from .views_rapports import (
 )
 from .viewser import ReportViewSet, DashboardViewSet
 from .views import UserProfileViewSet
+from .views_per import VendorViewSet
 
 from . import views
 
 # Création du routeur
 router = DefaultRouter()
 router.register(r'mobile-vendors', MobileVendorViewSet, basename='mobile-vendor')
+router.register(r'vendors', VendorViewSet, basename='vendor')
 router.register(r'vendor-activities', VendorActivityViewSet, basename='vendor-activity')
 router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vendor-performance')
 router.register(r'purchases', PurchaseViewSet, basename='purchase')
@@ -126,3 +128,17 @@ urlpatterns = [
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
     path('', include(router.urls)),
 ]
+
+
+    # Performance d'un vendeur spécifique
+    # GET /api/vendors/{id}/performance/?days=30
+    # GET /api/vendors/{id}/performance/?start_date=2024-01-01&end_date=2024-01-31
+    
+    # Classement de tous les vendeurs
+    # GET /api/vendors/ranking/?days=30
+    
+    # Mise à jour de la performance
+    # POST /api/vendors/{id}/update_performance/
+    
+    # Historique des ventes
+    # GET /api/vendors/{id}/sales_history/?days=30

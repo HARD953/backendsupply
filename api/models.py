@@ -640,6 +640,54 @@ class MobileVendor(models.Model):
         # Par exemple, basée sur les ventes récentes, l'assiduité, etc.
         pass
 
+    def calculate_performance(self, start_date=None, end_date=None):
+        """
+        Calcule la performance du vendeur : 
+        (ventes du vendeur / ventes totales de tous les vendeurs) * 100
+        """
+        # Filtrer par période si spécifiée
+        vendor_filters = {'vendor': self}
+        total_filters = {}
+        
+        if start_date:
+            vendor_filters['created_at__gte'] = start_date
+            total_filters['created_at__gte'] = start_date
+        if end_date:
+            vendor_filters['created_at__lte'] = end_date
+            total_filters['created_at__lte'] = end_date
+        
+        # Ventes du vendeur spécifique
+        vendor_sales = Sale.objects.filter(**vendor_filters).aggregate(
+            total=models.Sum('total_amount')
+        )['total'] or 0
+        
+        # Ventes totales de TOUS les vendeurs
+        total_sales = Sale.objects.filter(**total_filters).aggregate(
+            total=models.Sum('total_amount')
+        )['total'] or 0
+        
+        # Éviter la division par zéro
+        if total_sales == 0:
+            return 0.0
+        
+        # Calcul du pourcentage
+        performance = (vendor_sales / total_sales) * 100
+        return round(performance, 2)
+    
+    def update_performance(self, start_date=None, end_date=None):
+        """
+        Met à jour la performance du vendeur
+        """
+        self.performance = self.calculate_performance(start_date, end_date)
+        self.save(update_fields=['performance'])
+    
+    def get_recent_performance(self, days=30):
+        """
+        Performance sur les derniers jours
+        """
+        end_date = timezone.now()
+        start_date = end_date - timezone.timedelta(days=days)
+        return self.calculate_performance(start_date, end_date)
 
 # models.py
 from django.db import models, transaction
