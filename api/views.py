@@ -1022,27 +1022,27 @@ class MobileVendorViewSet(viewsets.ModelViewSet):
         
         return Response(data)
 
-    # @action(detail=True, methods=['get'])
-    # def stats(self, request, pk=None):
-    #     vendor = self.get_object()
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        vendor = self.get_object()
         
-    #     # Calcul de la somme totale des ventes pour ce vendeur
-    #     total_sales = Sale.objects.filter(vendor=vendor).aggregate(
-    #         total=Sum('total_amount')
-    #     )['total'] or 0
+        # Calcul de la somme totale des ventes pour ce vendeur
+        total_sales = Sale.objects.filter(vendor=vendor).aggregate(
+            total=Sum('total_amount')
+        )['total'] or 0
         
-    #     stats = {
-    #         'total_sales': total_sales,  # Utilisation du vrai total des ventes
-    #         'active_days': VendorActivity.objects.filter(
-    #             vendor=vendor,
-    #             activity_type__in=['check_in', 'sale']
-    #         ).dates('timestamp', 'day').distinct().count(),
-    #         'current_performance': vendor.performance,
-    #         'last_month_performance': VendorPerformance.objects.filter(
-    #             vendor=vendor
-    #         ).order_by('-month').first().performance_score if VendorPerformance.objects.filter(vendor=vendor).exists() else 0
-    #     }
-    #     return Response(stats)
+        stats = {
+            'total_sales': total_sales,  # Utilisation du vrai total des ventes
+            'active_days': VendorActivity.objects.filter(
+                vendor=vendor,
+                activity_type__in=['check_in', 'sale']
+            ).dates('timestamp', 'day').distinct().count(),
+            'current_performance': vendor.performance,
+            'last_month_performance': VendorPerformance.objects.filter(
+                vendor=vendor
+            ).order_by('-month').first().performance_score if VendorPerformance.objects.filter(vendor=vendor).exists() else 0
+        }
+        return Response(stats)
 
     @action(detail=False, methods=['get'])
     def by_pos(self, request):
@@ -1574,7 +1574,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                 'month_number': data['month'],
                 'total_customers': data['total_customers'],
                 'total_revenue': float(data['total_revenue'] or 0),
-                'total_revenue_TT': float(data['total_revenue_TT'] or 0),
+                'total_revenue_TT': float(tt_data.get('total_revenue_TT', 0) or 0),
                 'total_products_sold': data['total_products_sold'] or 0,
                 'total_sales': data['total_sales'],
                 'performance_ratio': float(performance_ratio),
