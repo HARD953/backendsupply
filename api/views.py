@@ -1371,7 +1371,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             vendor = self.request.user.mobile_vendor
         
         # Récupérer le queryset de base filtré par vendeur
-        queryset = Sale.objects.filter(vendor=vendor)
+        queryset = VendorActivity.objects.filter(vendor=vendor)
+        queryset2 = Sale.objects.filter(vendor=vendor)
         
         # Récupérer la date depuis les paramètres de requête
         date_param = request.query_params.get('date', None)
@@ -1390,19 +1391,29 @@ class SaleViewSet(viewsets.ModelViewSet):
         else:
             # Par défaut, utiliser la date d'aujourd'hui
             today = timezone.now().date()
-            queryset = queryset.filter(created_at__date=today)
+            #queryset = queryset.filter(created_at__date=today)
         
         # Calculer les statistiques
-        total_sales = queryset.count()
-        total_revenue = queryset.aggregate(total=Sum('total_amount'))['total'] or 0
-        total_quantity = queryset.aggregate(total=Sum('quantity'))['total'] or 0
+        total_sales = queryset2.count()
+
+        total_revenue = queryset2.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_quantity = queryset2.aggregate(total=Sum('quantity'))['total'] or 0
+
+        # Calcul des totaux à partir du queryset
+        totals = queryset.aggregate(
+            total_quantity=Sum('quantity_assignes'),
+            total_quantite_restant=Sum('quantity_restante')
+        )
+
+        total_quantity_assigne = totals['total_quantity'] or 0
+        total_quantite_restant = totals['total_quantite_restant'] or 0
         
         # Calculer le nombre de clients uniques
-        unique_customers = queryset.values('customer').distinct().count()
+        unique_customers = queryset2.values('customer').distinct().count()
         
         # Produits les plus vendus (top 5)
         top_products = (
-            queryset.values('product_variant__product__name')
+            queryset2.values('product_variant__product__name')
             .annotate(total_quantity=Sum('quantity'), total_revenue=Sum('total_amount'))
             .order_by('-total_quantity')[:5]
         )
@@ -1431,6 +1442,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             'total_sales': total_sales,
             'total_revenue': float(total_revenue),
             'total_quantity': total_quantity,
+            'total_quantity_assigne':total_quantity_assigne,
+            'total_quantite_restant': total_quantite_restant,
             'unique_customers': unique_customers,
             'average_sale_amount': float(total_revenue / total_sales) if total_sales > 0 else 0,
             'top_products': list(top_products),
@@ -1574,7 +1587,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                 'month_number': data['month'],
                 'total_customers': data['total_customers'],
                 'total_revenue': float(data['total_revenue'] or 0),
-                'total_revenue_TT': float(tt_data.get('total_revenue_TT', 0) or 0),
+                'total_revenue_TT': float(data['total_revenue_TT'] or 0),
                 'total_products_sold': data['total_products_sold'] or 0,
                 'total_sales': data['total_sales'],
                 'performance_ratio': float(performance_ratio),
