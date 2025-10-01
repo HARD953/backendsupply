@@ -742,6 +742,11 @@ class VendorActivity(models.Model):
         """Validation des données avant sauvegarde"""
         super().clean()
         
+        # CORRECTION : Initialiser quantity_restante SI nécessaire
+        if self.quantity_assignes > 0 and self.quantity_restante == 0 and self.quantity_sales == 0:
+            self.quantity_restante = self.quantity_assignes
+            print(f"🔧 Initialisation dans clean(): {self.quantity_restante}")
+        
         # Si c'est un réapprovisionnement, s'assurer que quantity_restante est initialisée
         if (self.activity_type == 'stock_replenishment' and 
             self.quantity_assignes > 0 and 
@@ -752,14 +757,16 @@ class VendorActivity(models.Model):
         if self.quantity_restante > self.quantity_assignes:
             raise ValidationError("La quantité restante ne peut pas dépasser la quantité assignée")
         
-        # # CORRECTION: Validation plus stricte
-        # total = self.quantity_sales + self.quantity_restante
-        # if total != self.quantity_assignes:
-        #     raise ValidationError(
-        #         f"Incohérence : ventes ({self.quantity_sales}) + "
-        #         f"restantes ({self.quantity_restante}) doit être égale à "
-        #         f"assignées ({self.quantity_assignes})"
-        #     )
+        # CORRECTION : Validation plus intelligente
+        total = self.quantity_sales + self.quantity_restante
+        
+        # Permettre une petite tolérance pour les arrondis/calculs
+        if abs(total - self.quantity_assignes) > 1:  # Tolérance de 1 unité
+            raise ValidationError(
+                f"Incohérence : ventes ({self.quantity_sales}) + "
+                f"restantes ({self.quantity_restante}) = {total}, mais "
+                f"assignées = {self.quantity_assignes}"
+            )
         
         # Validation que les quantités ne sont pas négatives
         if self.quantity_restante < 0:
@@ -772,14 +779,30 @@ class VendorActivity(models.Model):
         """
         Surcharge de la méthode save pour gérer l'affectation automatique
         """
-        # CORRECTION: Initialiser quantity_restante pour TOUTES les activités, pas seulement les réapprovisionnements
-        if self.quantity_restante == 0 and self.quantity_assignes > 0:
-            self.quantity_restante = self.quantity_assignes
-            print(f"🔧 Initialisation quantity_restante: {self.quantity_restante}")
+        # CORRECTION: Initialiser quantity_restante de manière plus robuste
+        if self.quantity_assignes > 0:
+            if self.quantity_restante == 0 and self.quantity_sales == 0:
+                # Cas : nouvelle activité, pas encore de ventes
+                self.quantity_restante = self.quantity_assignes
+                print(f"🔧 Initialisation quantity_restante: {self.quantity_restante}")
+            elif self.quantity_restante > self.quantity_assignes:
+                # Cas : incohérence détectée
+                self.quantity_restante = max(0, self.quantity_assignes - self.quantity_sales)
+                print(f"🔧 Correction quantity_restante: {self.quantity_restante}")
         
         # Validation avant sauvegarde
-        self.clean()
+        try:
+            self.clean()
+        except ValidationError as e:
+            print(f"❌ Validation error in save: {e}")
+            # Essayons de corriger automatiquement
+            if "Incohérence" in str(e):
+                self.quantity_restante = max(0, self.quantity_assignes - self.quantity_sales)
+                print(f"🔧 Auto-correction: quantity_restante = {self.quantity_restante}")
+            else:
+                raise e
         
+        # Le reste de votre code save() existant...
         # Si c'est une NOUVELLE activité de réapprovisionnement avec commande
         if (self._state.adding and 
             self.activity_type == 'stock_replenishment' and 
@@ -787,10 +810,6 @@ class VendorActivity(models.Model):
             self.related_order):
             
             print(f"🔧 Création activité réapprovisionnement - Quantité: {self.quantity_assignes}")
-            
-            # # Faire un diagnostic avant l'affectation
-            # diagnostic = self.diagnostiquer_affectation()
-            # print(f"🔍 Diagnostic avant affectation: {diagnostic}")
             
             # VÉRIFICATION PRÉALABLE : Est-ce qu'il y a au moins un article qui peut être affecté ?
             peut_etre_affecte = any(item.quantite_restante() > 0 for item in self.related_order.items.all())
@@ -805,7 +824,7 @@ class VendorActivity(models.Model):
             # Ensuite affecter la quantité aux articles
             try:
                 self.affecter_quantite_commande()
-                print(f"✅ Activité créée avec SUCCÈS unités affectées")
+                print(f"✅ Activité créée avec SUCCÈS")
                 
             except ValidationError as e:
                 print(f"❌ ERREUR CRITIQUE lors de l'affectation: {e}")
@@ -914,7 +933,7 @@ class VendorActivity(models.Model):
         # CORRECTION CRITIQUE : Vérification et correction systématique
         quantite_calculee_restante = locked_activity.quantity_assignes - locked_activity.quantity_sales
         
-        # Si incohérence détectée, corriger IMMÉDIATEMENT
+        # Si incohérence détectée, corriger IMMÉDIATEMENT et SAUVEGARDER
         if quantite_calculee_restante != locked_activity.quantity_restante:
             print(f"⚠️ Incohérence détectée: restante={locked_activity.quantity_restante}, calculée={quantite_calculee_restante}")
             
@@ -923,6 +942,10 @@ class VendorActivity(models.Model):
             locked_activity.quantity_restante = max(0, quantite_calculee_restante)
             
             print(f"🔧 Correction appliquée: {ancienne_valeur} → {locked_activity.quantity_restante}")
+            
+            # CORRECTION : SAUVEGARDER LA CORRECTION avant de continuer
+            locked_activity.save(update_fields=['quantity_restante'])
+            print(f"💾 Correction sauvegardée en base")
             
             # Vérification de sécurité après correction
             if locked_activity.quantity_restante < 0:

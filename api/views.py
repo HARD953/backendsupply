@@ -1100,7 +1100,8 @@ class VendorActivityViewSet(viewsets.ModelViewSet):
             return queryset.none()
                 
         # Filtrer seulement les activités où il reste du stock
-        queryset = queryset.filter(quantity_restante__gt=0)
+        #queryset = queryset.filter(quantity_restante__gt=0)
+        queryset = queryset.filter(quantity_sales__lt=F('quantity_assignes'))
                 
         return queryset
         
