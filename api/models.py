@@ -752,14 +752,14 @@ class VendorActivity(models.Model):
         if self.quantity_restante > self.quantity_assignes:
             raise ValidationError("La quantité restante ne peut pas dépasser la quantité assignée")
         
-        # CORRECTION: Validation plus stricte
-        total = self.quantity_sales + self.quantity_restante
-        if total != self.quantity_assignes:
-            raise ValidationError(
-                f"Incohérence : ventes ({self.quantity_sales}) + "
-                f"restantes ({self.quantity_restante}) doit être égale à "
-                f"assignées ({self.quantity_assignes})"
-            )
+        # # CORRECTION: Validation plus stricte
+        # total = self.quantity_sales + self.quantity_restante
+        # if total != self.quantity_assignes:
+        #     raise ValidationError(
+        #         f"Incohérence : ventes ({self.quantity_sales}) + "
+        #         f"restantes ({self.quantity_restante}) doit être égale à "
+        #         f"assignées ({self.quantity_assignes})"
+        #     )
         
         # Validation que les quantités ne sont pas négatives
         if self.quantity_restante < 0:
