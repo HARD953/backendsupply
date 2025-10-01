@@ -752,17 +752,21 @@ class VendorActivity(models.Model):
         if self.quantity_restante > self.quantity_assignes:
             raise ValidationError("La quantité restante ne peut pas dépasser la quantité assignée")
         
-        # Validation : quantity_sales + quantity_restante <= quantity_assignes
-        # CORRECTION: Cette validation ne doit pas s'appliquer lors des mises à jour partielles
+        # CORRECTION: Validation plus stricte
         total = self.quantity_sales + self.quantity_restante
-        if total > self.quantity_assignes:
-            # Tolérance pour les arrondis ou mise à jour en cours
-            if total - self.quantity_assignes > 1:  # Tolérance de 1 unité
-                raise ValidationError(
-                    f"Incohérence : ventes ({self.quantity_sales}) + "
-                    f"restantes ({self.quantity_restante}) > "
-                    f"assignées ({self.quantity_assignes})"
-                )
+        if total != self.quantity_assignes:
+            raise ValidationError(
+                f"Incohérence : ventes ({self.quantity_sales}) + "
+                f"restantes ({self.quantity_restante}) doit être égale à "
+                f"assignées ({self.quantity_assignes})"
+            )
+        
+        # Validation que les quantités ne sont pas négatives
+        if self.quantity_restante < 0:
+            raise ValidationError("La quantité restante ne peut pas être négative")
+        
+        if self.quantity_sales < 0:
+            raise ValidationError("La quantité vendue ne peut pas être négative")
 
     def save(self, *args, **kwargs):
         """
@@ -784,17 +788,31 @@ class VendorActivity(models.Model):
             
             print(f"🔧 Création activité réapprovisionnement - Quantité: {self.quantity_assignes}")
             
+            # # Faire un diagnostic avant l'affectation
+            # diagnostic = self.diagnostiquer_affectation()
+            # print(f"🔍 Diagnostic avant affectation: {diagnostic}")
+            
+            # VÉRIFICATION PRÉALABLE : Est-ce qu'il y a au moins un article qui peut être affecté ?
+            peut_etre_affecte = any(item.quantite_restante() > 0 for item in self.related_order.items.all())
+            if not peut_etre_affecte:
+                error_msg = "ABANDON : Aucun article dans la commande ne nécessite une affectation (tous sont déjà complètement affectés)"
+                print(f"❌ {error_msg}")
+                raise ValidationError(error_msg)
+            
             # Sauvegarder d'abord pour avoir un ID
             super().save(*args, **kwargs)
             
             # Ensuite affecter la quantité aux articles
             try:
                 self.affecter_quantite_commande()
+                print(f"✅ Activité créée avec SUCCÈS unités affectées")
+                
             except ValidationError as e:
-                print(f"❌ Erreur lors de l'affectation: {e}")
+                print(f"❌ ERREUR CRITIQUE lors de l'affectation: {e}")
                 # En cas d'erreur, supprimer l'instance créée
+                print("🗑️ Suppression de l'activité créée à cause de l'échec de l'affectation")
                 self.delete()
-                raise e
+                raise ValidationError(f"Échec de la création de l'activité : {e}")
                 
         else:
             # Pour les autres cas (mise à jour ou autres types)
@@ -806,16 +824,19 @@ class VendorActivity(models.Model):
         """
         if not self.related_order:
             print("❌ Aucune commande liée")
-            return
+            raise ValidationError("Aucune commande liée pour l'affectation")
             
         print(f"🔧 Début affectation - Quantité à affecter: {self.quantity_assignes}")
         
         order_items = self.related_order.items.all()
         if not order_items.exists():
             print("❌ Aucun article dans la commande")
-            return
+            raise ValidationError("La commande liée ne contient aucun article")
             
         quantite_restante_apres_affectation = self.quantity_assignes
+        total_affecte = 0
+        
+        print(f"📦 Nombre d'articles dans la commande: {order_items.count()}")
         
         for item in order_items:
             if quantite_restante_apres_affectation <= 0:
@@ -823,30 +844,50 @@ class VendorActivity(models.Model):
                 
             # Vérifier si l'article a besoin d'être affecté
             quantite_restante_item = item.quantite_restante()
+            print(f"   📋 Article {item.id}: {quantite_restante_item} unités restantes à affecter")
+            
             if quantite_restante_item > 0:
                 quantite_a_affecter = min(quantite_restante_apres_affectation, quantite_restante_item)
                 
-                print(f"   Article {item.id}: {quantite_a_affecter} unités sur {quantite_restante_item} restantes")
+                print(f"   ➕ Article {item.id}: affectation de {quantite_a_affecter} unités")
                 
                 try:
                     # Affecter la quantité à l'article
                     item.affecter_quantite(quantite_a_affecter)
                     quantite_restante_apres_affectation -= quantite_a_affecter
-                    print(f"   ✅ Affecté: {quantite_a_affecter}, Reste: {quantite_restante_apres_affectation}")
+                    total_affecte += quantite_a_affecter
+                    print(f"   ✅ Affecté: {quantite_a_affecter}, Reste à affecter: {quantite_restante_apres_affectation}")
                 except ValidationError as e:
                     print(f"   ❌ Erreur d'affectation pour l'article {item.id}: {e}")
                     continue
+            else:
+                print(f"   ⏭️ Article {item.id}: déjà complètement affecté, passage au suivant")
+        
+        # CORRECTION CRITIQUE : Si AUCUNE unité n'a pu être affectée, on lève une exception
+        if total_affecte == 0:
+            error_msg = (
+                f"IMPOSSIBLE de créer l'activité : Aucune unité n'a pu être affectée sur {self.quantity_assignes} demandées. "
+                f"Raisons possibles : "
+                f"- Tous les articles de la commande sont déjà complètement affectés "
+                f"- La commande ne contient pas d'articles nécessitant une affectation "
+                f"- Les quantités restantes des articles sont nulles"
+            )
+            print(f"❌ {error_msg}")
+            raise ValidationError(error_msg)
         
         # Mettre à jour la quantité restante
         self.quantity_restante = quantite_restante_apres_affectation
-        print(f"🔧 Quantité restante après affectation: {self.quantity_restante}")
+        print(f"🔧 Affectation terminée avec SUCCÈS:")
+        print(f"   ✅ Total affecté: {total_affecte} unités sur {self.quantity_assignes}")
+        print(f"   📊 Quantité restante après affectation: {self.quantity_restante}")
         
         # Sauvegarder la quantité restante mise à jour
         super().save(update_fields=['quantity_restante'])
         
         if quantite_restante_apres_affectation > 0:
-            error_msg = f"{quantite_restante_apres_affectation} unités n'ont pas pu être affectées"
-            print(f"   ⚠️ {error_msg}")
+            warning_msg = f"{quantite_restante_apres_affectation} unités n'ont pas pu être affectées (stock insuffisant dans les articles)"
+            print(f"   ⚠️ {warning_msg}")
+            # Dans ce cas, on ne lève pas d'exception car au moins une partie a été affectée
 
     def peut_vendre(self, quantite_demandee):
         """Vérifie si la quantité demandée peut être vendue"""
@@ -862,43 +903,67 @@ class VendorActivity(models.Model):
             raise ValidationError("La quantité de vente doit être positive")
         
         # Verrouiller l'instance en base pour éviter les conditions de concurrence
-        # select_for_update() verrouille la ligne jusqu'à la fin de la transaction
         locked_activity = VendorActivity.objects.select_for_update().get(id=self.id)
         
         print(f"🔒 Verrouillage activité {locked_activity.id}")
         print(f"   Quantité demandée: {quantite}")
         print(f"   Quantité restante actuelle: {locked_activity.quantity_restante}")
         print(f"   Quantité assignée: {locked_activity.quantity_assignes}")
+        print(f"   Quantité déjà vendue: {locked_activity.quantity_sales}")
         
-        # CORRECTION: Vérifier et corriger l'initialisation si nécessaire
-        if locked_activity.quantity_restante == 0 and locked_activity.quantity_assignes > 0 and locked_activity.quantity_sales == 0:
-            print(f"🔧 Correction: initialisation quantity_restante à {locked_activity.quantity_assignes}")
-            locked_activity.quantity_restante = locked_activity.quantity_assignes
-            # Mise à jour immédiate en base
-            VendorActivity.objects.filter(id=locked_activity.id).update(
-                quantity_restante=locked_activity.quantity_assignes
-            )
+        # CORRECTION CRITIQUE : Vérification et correction systématique
+        quantite_calculee_restante = locked_activity.quantity_assignes - locked_activity.quantity_sales
         
-        # Vérification avec les données verrouillées (les plus récentes)
+        # Si incohérence détectée, corriger IMMÉDIATEMENT
+        if quantite_calculee_restante != locked_activity.quantity_restante:
+            print(f"⚠️ Incohérence détectée: restante={locked_activity.quantity_restante}, calculée={quantite_calculee_restante}")
+            
+            # Appliquer la correction
+            ancienne_valeur = locked_activity.quantity_restante
+            locked_activity.quantity_restante = max(0, quantite_calculee_restante)
+            
+            print(f"🔧 Correction appliquée: {ancienne_valeur} → {locked_activity.quantity_restante}")
+            
+            # Vérification de sécurité après correction
+            if locked_activity.quantity_restante < 0:
+                raise ValidationError(f"Quantité restante devenue négative après correction: {locked_activity.quantity_restante}")
+        
+        # VÉRIFICATION FINALE AVANT VENTE
         if quantite > locked_activity.quantity_restante:
             raise ValidationError(
-                f"Impossible de vendre {quantite} unités. "
-                f"Quantité restante: {locked_activity.quantity_restante}"
+                f"Stock insuffisant. Demande: {quantite}, Disponible: {locked_activity.quantity_restante}"
             )
+        
+        if locked_activity.quantity_restante == 0:
+            raise ValidationError("Stock épuisé, impossible de vendre")
         
         # Mise à jour atomique
         locked_activity.quantity_sales += quantite
         locked_activity.quantity_restante -= quantite
         
-        # CORRECTION: Utiliser une mise à jour directe en base pour éviter clean()
-        VendorActivity.objects.filter(id=locked_activity.id).update(
-            quantity_sales=locked_activity.quantity_sales,
-            quantity_restante=locked_activity.quantity_restante
-        )
+        # Validation rigoureuse des nouvelles valeurs
+        if locked_activity.quantity_restante < 0:
+            raise ValidationError(f"Quantité restante négative après vente: {locked_activity.quantity_restante}")
         
-        print(f"✅ Vente effectuée:")
+        if locked_activity.quantity_sales > locked_activity.quantity_assignes:
+            raise ValidationError(
+                f"Ventes ({locked_activity.quantity_sales}) > assignées ({locked_activity.quantity_assignes})"
+            )
+        
+        # Vérification de cohérence finale
+        if locked_activity.quantity_sales + locked_activity.quantity_restante != locked_activity.quantity_assignes:
+            raise ValidationError(
+                f"Incohérence après vente: {locked_activity.quantity_sales} + {locked_activity.quantity_restante} != {locked_activity.quantity_assignes}"
+            )
+        
+        # CORRECTION: Sauvegarde avec validation complète
+        locked_activity.save()
+        
+        print(f"✅ Vente effectuée avec succès:")
+        print(f"   Quantité vendue: {quantite}")
         print(f"   Nouvelles ventes totales: {locked_activity.quantity_sales}")
         print(f"   Nouvelle quantité restante: {locked_activity.quantity_restante}")
+        print(f"   Vérification: {locked_activity.quantity_sales} + {locked_activity.quantity_restante} = {locked_activity.quantity_assignes}")
         print(f"🔓 Déverrouillage activité {locked_activity.id}")
         
         # Mettre à jour l'instance actuelle avec les nouvelles valeurs
@@ -975,61 +1040,61 @@ class VendorActivity(models.Model):
         return f"{self.vendor.full_name} - {order_id} - {self.get_activity_type_display()} - {self.created_at.date()}"
 
 
-# class Sale(models.Model):
-#     """
-#     Modèle pour enregistrer les ventes
-#     """
-#     vendor_activity = models.ForeignKey(
-#         'VendorActivity', 
-#         on_delete=models.CASCADE,
-#         related_name='sales'
-#     )
-#     quantity = models.PositiveIntegerField()
-#     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-#     customer_name = models.CharField(max_length=100, blank=True, null=True)
-#     timestamp = models.DateTimeField(auto_now_add=True)
-#     notes = models.TextField(blank=True, null=True)
+class Sale(models.Model):
+    """
+    Modèle pour enregistrer les ventes
+    """
+    vendor_activity = models.ForeignKey(
+        'VendorActivity', 
+        on_delete=models.CASCADE,
+        related_name='sales'
+    )
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    customer_name = models.CharField(max_length=100, blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True)
     
-#     class Meta:
-#         verbose_name = "Vente"
-#         verbose_name_plural = "Ventes"
-#         ordering = ['-timestamp']
+    class Meta:
+        verbose_name = "Vente"
+        verbose_name_plural = "Ventes"
+        ordering = ['-timestamp']
     
-#     def clean(self):
-#         """Validation avant sauvegarde"""
-#         super().clean()
+    def clean(self):
+        """Validation avant sauvegarde"""
+        super().clean()
         
-#         if self.quantity <= 0:
-#             raise ValidationError("La quantité doit être positive")
+        if self.quantity <= 0:
+            raise ValidationError("La quantité doit être positive")
         
-#         if not self.vendor_activity:
-#             raise ValidationError("Une activité de vendeur est requise")
+        if not self.vendor_activity:
+            raise ValidationError("Une activité de vendeur est requise")
     
-#     def save(self, *args, **kwargs):
-#         """
-#         Surcharge de save() pour gérer automatiquement les ventes
-#         """
-#         # Validation
-#         self.clean()
+    def save(self, *args, **kwargs):
+        """
+        Surcharge de save() pour gérer automatiquement les ventes
+        """
+        # Validation
+        self.clean()
         
-#         # Si c'est une nouvelle vente
-#         if self._state.adding:
-#             print(f"💰 Création nouvelle vente: {self.quantity} unités")
+        # Si c'est une nouvelle vente
+        if self._state.adding:
+            print(f"💰 Création nouvelle vente: {self.quantity} unités")
             
-#             # Utiliser la méthode atomique pour effectuer la vente
-#             try:
-#                 self.vendor_activity.vendre_avec_verrouillage(self.quantity)
-#                 print(f"✅ Stock mis à jour avec succès")
-#             except ValidationError as e:
-#                 print(f"❌ Erreur lors de la vente: {e}")
-#                 raise e
+            # Utiliser la méthode atomique pour effectuer la vente
+            try:
+                self.vendor_activity.vendre_avec_verrouillage(self.quantity)
+                print(f"✅ Stock mis à jour avec succès")
+            except ValidationError as e:
+                print(f"❌ Erreur lors de la vente: {e}")
+                raise e
         
-#         # Sauvegarder la vente
-#         super().save(*args, **kwargs)
-#         print(f"💾 Vente sauvegardée: ID={self.id}")
+        # Sauvegarder la vente
+        super().save(*args, **kwargs)
+        print(f"💾 Vente sauvegardée: ID={self.id}")
     
-#     def __str__(self):
-#         return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name} - {self.created_at.date()}"
+    def __str__(self):
+        return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name} - {self.created_at.date()}"
     
 class VendorPerformance(models.Model):
     """
