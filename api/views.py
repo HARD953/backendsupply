@@ -1588,7 +1588,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                 'month_number': data['month'],
                 'total_customers': data['total_customers'],
                 'total_revenue': float(data['total_revenue'] or 0),
-                'total_revenue_TT': float(data['total_revenue_TT'] or 0),
+                'total_revenue_TT': float(tt_data.get('total_revenue_TT', 0) or 0),  # Utiliser tt_data
                 'total_products_sold': data['total_products_sold'] or 0,
                 'total_sales': data['total_sales'],
                 'performance_ratio': float(performance_ratio),
