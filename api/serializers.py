@@ -100,10 +100,12 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'phone', 'email', 'address', 'type', 'registration_date']
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(required=False)  # ← required=False pour l'update
+    user = UserCreateSerializer(required=True)
     
+    # CORRECTION ICI : Utiliser le serializer au lieu de PrimaryKeyRelatedField
     points_of_sale = PointOfSaleSerializer(many=True, read_only=True)
     
+    # Champ pour l'écriture des points de vente (garder PrimaryKeyRelatedField pour l'écriture)
     points_of_sale_ids = serializers.PrimaryKeyRelatedField(
         queryset=PointOfSale.objects.all(),
         many=True,
@@ -114,6 +116,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     role_name = serializers.CharField(source='role.name', read_only=True)
     
+    # Champ pour l'écriture du rôle
     role_id = serializers.PrimaryKeyRelatedField(
         queryset=Role.objects.all(), 
         source='role', 
@@ -129,7 +132,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'last_login', 'status', 'avatar', 'points_of_sale', 'points_of_sale_ids',
             'establishment_name', 'establishment_phone', 'establishment_email',
             'establishment_address', 'establishment_type', 'establishment_registration_date',
-            'owner', 'role_name', 'role_id'
+            'owner',
+            # Champs supplémentaires
+            'role_name',
+            # Champs write-only
+            'role_id'
         ]
         read_only_fields = ['join_date', 'last_login', 'owner']
 
@@ -177,9 +184,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             user = instance.user
             for attr, value in user_data.items():
                 if attr == 'password':
-                    # Ne mettre à jour le password que s'il est fourni et non vide
-                    if value:
-                        user.set_password(value)
+                    user.set_password(value)
                 else:
                     setattr(user, attr, value)
             user.save()
