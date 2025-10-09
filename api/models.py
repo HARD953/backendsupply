@@ -188,18 +188,6 @@ class UserProfile(models.Model):
         """Méthode pour synchroniser éventuellement avec un POS existant"""
         super().save(*args, **kwargs)
         
-        # # Si on veut créer automatiquement un POS à partir des infos
-        # if not self.points_of_sale.exists() and self.establishment_name:
-        #     pos = PointOfSale.objects.create(
-        #         name=self.establishment_name,
-        #         phone=self.establishment_phone,
-        #         email=self.establishment_email,
-        #         address=self.establishment_address,
-        #         type=self.establishment_type,
-        #         registration_date=self.establishment_registration_date,
-        #         user=self.user,  # Add this line to set the user relationship
-        #     )
-        #     self.points_of_sale.add(pos)
     def __str__(self):
         return f"{self.user.username} ({self.role.name if self.role else 'No Role'})"
     
@@ -1077,6 +1065,8 @@ class Sale(models.Model):
     customer_name = models.CharField(max_length=100, blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True, null=True)
+    latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
+    longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
     
     class Meta:
         verbose_name = "Vente"
@@ -1224,6 +1214,8 @@ class Sale(models.Model):
     )
     quantity = models.PositiveIntegerField()
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
+    longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     vendor = models.ForeignKey(

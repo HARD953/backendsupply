@@ -28,6 +28,7 @@ from .views_rapports import (
 from .viewser import ReportViewSet, DashboardViewSet
 from .views import UserProfileViewSet
 from .views_per import VendorViewSet
+from . import views1
 
 from . import views
 
@@ -42,6 +43,7 @@ router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, base
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
+
 
 urlpatterns = [
     # Dashboard
@@ -126,6 +128,38 @@ urlpatterns = [
     path('sales-trend/', SalesTrendView.as_view(), name='sales-trend'),
     path('carte/', views.get_customer_sales, name='customer-sales-sales'),
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
+
+
+    # Résumé du dashboard
+# Résumé du dashboard
+    path('dashboards/summary/', views1.DashboardSummaryAPIView.as_view(), name='dashboard-summary'),
+    
+    # Rapports de vente
+    path('reports/sales/', views1.SalesReportAPIView.as_view(), name='sales-reports'),
+    
+    # Produits les plus vendus
+    path('reports/top-products/', views1.TopProductsAPIView.as_view(), name='top-products'),
+    
+    # Performance des vendeurs
+    path('reports/vendor-performance/', views1.VendorPerformanceAPIView.as_view(), name='vendor-performance'),
+    
+    # Alertes de stock
+    path('reports/stock-alerts/', views1.StockAlertsAPIView.as_view(), name='stock-alerts'),
+    
+    # Rapports de commande
+    path('reports/orders/', views1.OrderReportsAPIView.as_view(), name='order-reports'),
+    
+    # Rapports financiers
+    path('reports/financial/', views1.FinancialReportsAPIView.as_view(), name='financial-reports'),
+    
+    # Graphiques et visualisations
+    path('charts/sales-trend/', views1.SalesTrendChartAPIView.as_view(), name='sales-trend-chart'),
+    path('charts/category-sales/', views1.CategorySalesChartAPIView.as_view(), name='category-sales-chart'),
+    path('charts/vendor-comparison/', views1.VendorComparisonChartAPIView.as_view(), name='vendor-comparison-chart'),
+    path('charts/stock-distribution/', views1.StockDistributionChartAPIView.as_view(), name='stock-distribution-chart'),
+    path('charts/revenue-trend/', views1.RevenueTrendChartAPIView.as_view(), name='revenue-trend-chart'),
+    path('charts/pos-performance/', views1.PointOfSalePerformanceAPIView.as_view(), name='pos-performance-chart'),
+    path('metrics/real-time/', views1.RealTimeMetricsAPIView.as_view(), name='real-time-metrics'),
     path('', include(router.urls)),
 ]
 
