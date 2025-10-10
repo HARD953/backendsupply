@@ -1268,3 +1268,65 @@ class Sale(models.Model):
     
     def __str__(self):
         return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name}"
+    
+
+# models.py - Ajoutez cette classe
+class Report(models.Model):
+    """
+    Modèle pour stocker les rapports générés
+    """
+    REPORT_TYPES = [
+        ('ventes', 'Rapport des Ventes'),
+        ('stocks', 'Rapport des Stocks'),
+        ('commandes', 'Rapport des Commandes'),
+        ('clients', 'Rapport des Clients'),
+        ('fournisseurs', 'Rapport des Fournisseurs'),
+        ('vendeurs', 'Rapport des Vendeurs Ambulants'),
+        ('points_vente', 'Rapport des Points de Vente'),
+        ('performance', 'Rapport de Performance'),
+    ]
+
+    FORMAT_CHOICES = [
+        ('pdf', 'PDF'),
+        ('excel', 'Excel'),
+        ('json', 'JSON'),
+    ]
+
+    title = models.CharField(max_length=255)
+    report_type = models.CharField(max_length=50, choices=REPORT_TYPES)
+    format = models.CharField(max_length=10, choices=FORMAT_CHOICES, default='pdf')
+    generated_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    point_of_sale = models.ForeignKey(PointOfSale, on_delete=models.SET_NULL, null=True, blank=True)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    filters = models.JSONField(default=dict)  # Pour stocker les filtres appliqués
+    data = models.JSONField()  # Données du rapport
+    file = models.FileField(upload_to='reports/', null=True, blank=True)
+    size = models.CharField(max_length=50, default='0 KB')
+    is_generated = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Rapport"
+        verbose_name_plural = "Rapports"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.get_report_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if not self.title:
+            self.title = f"Rapport {self.get_report_type_display()} {self.start_date} - {self.end_date}"
+        super().save(*args, **kwargs)
+
+    def get_file_size(self):
+        if self.file and hasattr(self.file, 'size'):
+            size = self.file.size
+            if size < 1024:
+                return f"{size} B"
+            elif size < 1024 * 1024:
+                return f"{size / 1024:.1f} KB"
+            else:
+                return f"{size / (1024 * 1024):.1f} MB"
+        return "0 KB"

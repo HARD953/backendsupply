@@ -1,1009 +1,478 @@
 # views.py
-from rest_framework.views import APIView
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
-from django.db.models import Sum, Count, Avg, Q, F, ExpressionWrapper, DecimalField
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Count, Sum, Avg, Q, F
 from django.utils import timezone
 from datetime import datetime, timedelta
-from .serializers1 import *
-from .models import *
+from django.http import HttpResponse
+import json
+import pandas as pd
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+import io
 
-class DashboardSummaryAPIView(APIView):
-    """API pour le résumé du tableau de bord"""
-    
-    def get(self, request):
-        try:
-            # Calcul des métriques principales
-            total_points_of_sale = PointOfSale.objects.count()
-            active_points_of_sale = PointOfSale.objects.filter(status='actif').count()
-            total_products = Product.objects.count()
+from .models import *
+from .serializers1 import *
+
+class ReportViewSet(viewsets.ModelViewSet):
+    queryset = Report.objects.all()
+    serializer_class = ReportSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Report.objects.all()
+        
+        # Filtrage par type de rapport
+        report_type = self.request.query_params.get('type', None)
+        if report_type:
+            queryset = queryset.filter(report_type=report_type)
             
-            # Produits avec stock faible ou rupture
-            low_stock_products = Product.objects.filter(
-                status='stock_faible'
-            ).count()
+        # Filtrage par point de vente
+        point_of_sale = self.request.query_params.get('point_of_sale', None)
+        if point_of_sale:
+            queryset = queryset.filter(point_of_sale_id=point_of_sale)
             
-            out_of_stock_products = Product.objects.filter(
-                status='rupture'
-            ).count()
+        # Filtrage par date
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        if start_date and end_date:
+            queryset = queryset.filter(
+                created_at__date__gte=start_date,
+                created_at__date__lte=end_date
+            )
             
-            total_mobile_vendors = MobileVendor.objects.count()
-            active_mobile_vendors = MobileVendor.objects.filter(status='actif').count()
-            
-            # Calcul du chiffre d'affaires via les ventes (Sale model)
-            total_sales_amount = Sale.objects.aggregate(
-                total=Sum(F('total_amount'))
-            )['total'] or 0
-            
-            # Alternative si le modèle Sale n'est pas disponible
-            if total_sales_amount == 0:
-                # Calcul via les activités de vente
-                total_sales_amount = VendorActivity.objects.filter(
-                    activity_type='sale'
-                ).aggregate(
-                    total=Sum(F('quantity_sales') * F('vendor_activity__sales__price'))
-                )['total'] or 0
-            
-            # Si toujours 0, calcul via les commandes livrées
-            if total_sales_amount == 0:
-                total_sales_amount = Order.objects.filter(
-                    status__in=['delivered', 'shipped']
-                ).aggregate(
-                    total=Sum('total')
-                )['total'] or 0
-            
-            total_orders = Order.objects.count()
-            pending_orders = Order.objects.filter(status='pending').count()
-            
-            data = {
-                'total_points_of_sale': total_points_of_sale,
-                'active_points_of_sale': active_points_of_sale,
-                'total_products': total_products,
-                'low_stock_products': low_stock_products,
-                'out_of_stock_products': out_of_stock_products,
-                'total_mobile_vendors': total_mobile_vendors,
-                'active_mobile_vendors': active_mobile_vendors,
-                'total_sales_amount': float(total_sales_amount),
-                'total_orders': total_orders,
-                'pending_orders': pending_orders,
+        return queryset.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(generated_by=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def generate(self, request):
+        serializer = ReportGenerationSerializer(data=request.data)
+        if serializer.is_valid():
+            return self._generate_report(serializer.validated_data, request.user)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def _generate_report(self, data, user):
+        report_type = data['report_type']
+        start_date = data['start_date']
+        end_date = data['end_date']
+        point_of_sale = data.get('point_of_sale')
+        category = data.get('category')
+        format_type = data.get('format', 'pdf')
+
+        # Créer l'entrée du rapport
+        report = Report.objects.create(
+            title=f"Rapport {report_type}",
+            report_type=report_type,
+            start_date=start_date,
+            end_date=end_date,
+            point_of_sale=point_of_sale,
+            generated_by=user,
+            filters={
+                'category_id': category.id if category else None,
+                'point_of_sale_id': point_of_sale.id if point_of_sale else None
             }
+        )
+
+        try:
+            # Générer les données du rapport selon le type
+            report_data = self._generate_report_data(report_type, start_date, end_date, point_of_sale, category)
+            report.data = report_data
+            report.is_generated = True
             
-            serializer = ReportSummarySerializer(data)
-            return Response(serializer.data)
+            # Générer le fichier si nécessaire
+            if format_type != 'json':
+                file_content = self._generate_file(report_data, report_type, format_type)
+                filename = f"report_{report.id}_{report_type}.{format_type}"
+                report.file.save(filename, file_content)
+                report.size = report.get_file_size()
+            
+            report.save()
+            
+            serializer = self.get_serializer(report)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            print(f"Error in DashboardSummaryAPIView: {str(e)}")
+            report.delete()
             return Response(
-                {'error': f'Erreur lors du calcul des données: {str(e)}'},
+                {'error': f'Erreur lors de la génération du rapport: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class SalesReportAPIView(APIView):
-    """API pour les rapports de vente par période"""
-    
-    def get(self, request):
-        try:
-            period = request.GET.get('period', 'today')
-            date_from, date_to = self.get_date_range(period)
-            
-            # Calcul des ventes via le modèle Sale
-            sales_data = Sale.objects.filter(
-                timestamp__range=[date_from, date_to]
-            ).aggregate(
-                total_sales=Sum(F('quantity') * F('price')),
-                total_quantity=Sum('quantity')
-            )
-            
-            total_sales = sales_data['total_sales'] or 0
-            total_quantity_sold = sales_data['total_quantity'] or 0
-            average_sale_amount = total_sales / total_quantity_sold if total_quantity_sold > 0 else 0
-            
-            # Calcul de la croissance
-            previous_period_sales = self.get_previous_period_sales(period)
-            sales_growth = self.calculate_growth(total_sales, previous_period_sales)
-            
-            data = {
-                'period': period,
-                'total_sales': float(total_sales),
-                'total_quantity_sold': total_quantity_sold,
-                'average_sale_amount': float(average_sale_amount),
-                'sales_growth': sales_growth,
-            }
-            
-            serializer = SalesReportSerializer(data)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in SalesReportAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = {
-                'period': 'month',
-                'total_sales': 1250000.0,
-                'total_quantity_sold': 450,
-                'average_sale_amount': 2777.78,
-                'sales_growth': 12.5
-            }
-            serializer = SalesReportSerializer(demo_data)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'today':
-            return today, today + timedelta(days=1)
-        elif period == 'week':
-            return today - timedelta(days=7), today + timedelta(days=1)
-        elif period == 'month':
-            return today - timedelta(days=30), today + timedelta(days=1)
-        elif period == 'year':
-            return today - timedelta(days=365), today + timedelta(days=1)
-        return today - timedelta(days=7), today + timedelta(days=1)
-    
-    def get_previous_period_sales(self, period):
-        today = timezone.now().date()
-        if period == 'today':
-            previous_date = today - timedelta(days=1)
-            sales = Sale.objects.filter(timestamp__date=previous_date)
-        elif period == 'week':
-            previous_date_from = today - timedelta(days=14)
-            previous_date_to = today - timedelta(days=7)
-            sales = Sale.objects.filter(timestamp__range=[previous_date_from, previous_date_to])
-        elif period == 'month':
-            previous_date_from = today - timedelta(days=60)
-            previous_date_to = today - timedelta(days=30)
-            sales = Sale.objects.filter(timestamp__range=[previous_date_from, previous_date_to])
+    def _generate_report_data(self, report_type, start_date, end_date, point_of_sale, category):
+        # Filtrer par période
+        date_filter = Q(created_at__date__gte=start_date, created_at__date__lte=end_date)
+        
+        if report_type == 'points_vente':
+            return self._generate_points_of_sale_report(date_filter, point_of_sale)
+        elif report_type == 'ventes':
+            return self._generate_sales_report(date_filter, point_of_sale, category)
+        elif report_type == 'stocks':
+            return self._generate_stocks_report(point_of_sale, category)
+        elif report_type == 'commandes':
+            return self._generate_orders_report(date_filter, point_of_sale)
+        elif report_type == 'vendeurs':
+            return self._generate_vendors_report(date_filter, point_of_sale)
+        elif report_type == 'clients':
+            return self._generate_purchases_report(date_filter, point_of_sale)
+        elif report_type == 'performance':
+            return self._generate_performance_report(date_filter, point_of_sale)
         else:
-            return 0
-            
-        return sales.aggregate(total=Sum(F('quantity') * F('price')))['total'] or 0
-    
-    def calculate_growth(self, current, previous):
-        if previous == 0:
-            return None
-        return round(((current - previous) / previous) * 100, 2)
+            return {}
 
-class TopProductsAPIView(APIView):
-    """API pour les produits les plus vendus"""
-    
-    def get(self, request):
-        try:
-            limit = int(request.GET.get('limit', 10))
-            period = request.GET.get('period', 'month')
+    def _generate_points_of_sale_report(self, date_filter, point_of_sale):
+        queryset = PointOfSale.objects.all()
+        if point_of_sale:
+            queryset = queryset.filter(id=point_of_sale.id)
             
-            date_from, date_to = self.get_date_range(period)
+        points_of_sale_data = []
+        for pos in queryset:
+            # Calculer les statistiques pour chaque point de vente
+            total_products = pos.products.count()
+            total_orders = pos.orders.filter(date_filter).count()
+            total_sales = pos.orders.filter(date_filter).aggregate(
+                total=Sum('total')
+            )['total'] or 0
             
-            # Approche simplifiée pour les top produits
-            top_products = Sale.objects.filter(
-                timestamp__range=[date_from, date_to]
-            ).values(
-                product_name=F('vendor_activity__related_order__items__product_variant__product__name'),
-                category_name=F('vendor_activity__related_order__items__product_variant__product__category__name')
-            ).annotate(
-                total_quantity_sold=Sum('quantity'),
-                total_revenue=Sum(F('quantity') * F('price'))
-            ).order_by('-total_quantity_sold')[:limit]
-            
-            # Si pas de données, utiliser les données de démonstration
-            if not top_products:
-                top_products = [
-                    {
-                        'product_name': 'Riz Basmati 5kg',
-                        'category_name': 'Céréales',
-                        'total_quantity_sold': 150,
-                        'total_revenue': 450000
-                    },
-                    {
-                        'product_name': 'Huile Tournesol 2L',
-                        'category_name': 'Huiles', 
-                        'total_quantity_sold': 120,
-                        'total_revenue': 360000
-                    }
-                ]
-            
-            # Ajouter le nom du point de vente (fixe pour la démo)
-            for product in top_products:
-                product['point_of_sale_name'] = "Point de vente Principal"
-            
-            serializer = TopProductSerializer(top_products, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in TopProductsAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {
-                    'product_name': 'Riz Basmati 5kg',
-                    'category_name': 'Céréales',
-                    'total_quantity_sold': 150,
-                    'total_revenue': 450000,
-                    'point_of_sale_name': 'POS Central'
-                },
-                {
-                    'product_name': 'Huile Tournesol 2L',
-                    'category_name': 'Huiles',
-                    'total_quantity_sold': 120,
-                    'total_revenue': 360000,
-                    'point_of_sale_name': 'POS Central'
-                }
-            ]
-            serializer = TopProductSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'today':
-            return today, today + timedelta(days=1)
-        elif period == 'week':
-            return today - timedelta(days=7), today + timedelta(days=1)
-        elif period == 'month':
-            return today - timedelta(days=30), today + timedelta(days=1)
-        return today - timedelta(days=30), today + timedelta(days=1)
-
-class VendorPerformanceAPIView(APIView):
-    """API pour la performance des vendeurs"""
-    
-    def get(self, request):
-        try:
-            period = request.GET.get('period', 'month')
-            date_from, date_to = self.get_date_range(period)
-            
-            vendor_performance = MobileVendor.objects.annotate(
-                total_sales=Sum(
-                    F('activities__sales__quantity') * F('activities__sales__price'),
-                    filter=Q(activities__timestamp__range=[date_from, date_to])
-                ),
-                total_quantity=Sum(
-                    'activities__sales__quantity',
-                    filter=Q(activities__timestamp__range=[date_from, date_to])
-                )
-            ).filter(
-                total_sales__isnull=False
-            ).values(
-                'id', 'first_name', 'last_name', 'point_of_sale__name',
-                'performance', 'average_daily_sales', 'zones'
-            ).order_by('-total_sales')
-            
-            performance_data = []
-            for vendor in vendor_performance:
-                performance_data.append({
-                    'vendor_name': f"{vendor['first_name']} {vendor['last_name']}",
-                    'point_of_sale_name': vendor['point_of_sale__name'],
-                    'total_sales': vendor['total_sales'] or 0,
-                    'total_quantity_sold': vendor['total_quantity'] or 0,
-                    'performance_score': vendor['performance'] or 0,
-                    'average_daily_sales': vendor['average_daily_sales'] or 0,
-                    'zone': vendor['zones'][0] if vendor['zones'] else 'Non spécifié'
-                })
-            
-            # Si pas de données, utiliser des données de démonstration
-            if not performance_data:
-                performance_data = [
-                    {
-                        'vendor_name': 'Jean Dupont',
-                        'point_of_sale_name': 'Point de vente Central',
-                        'total_sales': 450000,
-                        'total_quantity_sold': 150,
-                        'performance_score': 95.5,
-                        'average_daily_sales': 15000,
-                        'zone': 'Zone Nord'
-                    },
-                    {
-                        'vendor_name': 'Marie Martin',
-                        'point_of_sale_name': 'Supermarché Nord',
-                        'total_sales': 380000,
-                        'total_quantity_sold': 120,
-                        'performance_score': 88.2,
-                        'average_daily_sales': 12666,
-                        'zone': 'Zone Sud'
-                    }
-                ]
-            
-            serializer = VendorPerformanceSerializer(performance_data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in VendorPerformanceAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {
-                    'vendor_name': 'Vendeur Démo 1',
-                    'point_of_sale_name': 'POS Central',
-                    'total_sales': 450000,
-                    'total_quantity_sold': 150,
-                    'performance_score': 95.5,
-                    'average_daily_sales': 15000,
-                    'zone': 'Zone Nord'
-                },
-                {
-                    'vendor_name': 'Vendeur Démo 2',
-                    'point_of_sale_name': 'Supermarché Nord',
-                    'total_sales': 380000,
-                    'total_quantity_sold': 120,
-                    'performance_score': 88.2,
-                    'average_daily_sales': 12666,
-                    'zone': 'Zone Sud'
-                }
-            ]
-            serializer = VendorPerformanceSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'week':
-            return today - timedelta(days=7), today + timedelta(days=1)
-        elif period == 'month':
-            return today - timedelta(days=30), today + timedelta(days=1)
-        elif period == 'year':
-            return today - timedelta(days=365), today + timedelta(days=1)
-        return today - timedelta(days=30), today + timedelta(days=1)
-
-class StockAlertsAPIView(APIView):
-    """API pour les alertes de stock"""
-    
-    def get(self, request):
-        try:
-            alert_type = request.GET.get('type', 'all')  # all, low, out
-            
-            variants = ProductVariant.objects.select_related(
-                'product', 'product__point_of_sale', 'format'
-            )
-            
-            if alert_type == 'low':
-                variants = variants.filter(current_stock__lte=F('min_stock'))
-            elif alert_type == 'out':
-                variants = variants.filter(current_stock=0)
-            else:
-                variants = variants.filter(
-                    Q(current_stock__lte=F('min_stock')) | Q(current_stock=0)
-                )
-            
-            variants = variants.order_by('current_stock')
-            
-            # Préparer les données pour la sérialisation
-            alert_data = []
-            for variant in variants:
-                alert_data.append({
-                    'id': variant.id,
-                    'product_name': variant.product.name if variant.product else 'Produit inconnu',
-                    'point_of_sale_name': variant.product.point_of_sale.name if variant.product and variant.product.point_of_sale else 'POS inconnu',
-                    'format_name': variant.format.name if variant.format else 'Sans format',
-                    'current_stock': variant.current_stock,
-                    'min_stock': variant.min_stock,
-                    'max_stock': variant.max_stock,
-                    'price': float(variant.price) if variant.price else 0
-                })
-            
-            serializer = StockAlertSerializer(alert_data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in StockAlertsAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {
-                    'id': 1,
-                    'product_name': 'Riz Basmati 5kg',
-                    'point_of_sale_name': 'Supermarché Central',
-                    'format_name': '5kg',
-                    'current_stock': 5,
-                    'min_stock': 20,
-                    'max_stock': 100,
-                    'price': 2500.0
-                },
-                {
-                    'id': 2,
-                    'product_name': 'Huile Tournesol 2L',
-                    'point_of_sale_name': 'Boutique Nord',
-                    'format_name': '2L',
-                    'current_stock': 0,
-                    'min_stock': 15,
-                    'max_stock': 80,
-                    'price': 1800.0
-                },
-                {
-                    'id': 3,
-                    'product_name': 'Sucre en poudre 1kg',
-                    'point_of_sale_name': 'Supermarché Central',
-                    'format_name': '1kg',
-                    'current_stock': 8,
-                    'min_stock': 25,
-                    'max_stock': 120,
-                    'price': 1200.0
-                }
-            ]
-            serializer = StockAlertSerializer(demo_data, many=True)
-            return Response(serializer.data)
-
-class OrderReportsAPIView(APIView):
-    """API pour les rapports de commande"""
-    
-    def get(self, request):
-        try:
-            status_filter = request.GET.get('status', 'all')
-            date_from = request.GET.get('date_from')
-            date_to = request.GET.get('date_to')
-            
-            orders = Order.objects.select_related('customer__user', 'point_of_sale')
-            
-            if status_filter != 'all':
-                orders = orders.filter(status=status_filter)
-            
-            if date_from and date_to:
-                orders = orders.filter(date__range=[date_from, date_to])
-            else:
-                # Par défaut, afficher les commandes du dernier mois
-                last_month = timezone.now().date() - timedelta(days=30)
-                orders = orders.filter(date__gte=last_month)
-            
-            # Ajouter le nombre d'articles par commande
-            orders = orders.annotate(items_count=Count('items'))
-            
-            # Préparer les données pour la sérialisation
-            order_data = []
-            for order in orders:
-                order_data.append({
-                    'id': order.id,
-                    'customer_name': self.get_customer_name(order),
-                    'point_of_sale_name': order.point_of_sale.name if order.point_of_sale else 'POS inconnu',
-                    'status': order.status,
-                    'total': float(order.total) if order.total else 0,
-                    'date': order.date,
-                    'delivery_date': order.delivery_date,
-                    'priority': order.priority,
-                    'items_count': order.items_count
-                })
-            
-            serializer = OrderReportSerializer(order_data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in OrderReportsAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {
-                    'id': 1,
-                    'customer_name': 'Jean Dupont',
-                    'point_of_sale_name': 'Supermarché Central',
-                    'status': 'delivered',
-                    'total': 45000.0,
-                    'date': '2024-01-15',
-                    'delivery_date': '2024-01-16',
-                    'priority': 'high',
-                    'items_count': 5
-                },
-                {
-                    'id': 2,
-                    'customer_name': 'Marie Martin',
-                    'point_of_sale_name': 'Boutique Nord',
-                    'status': 'pending',
-                    'total': 28000.0,
-                    'date': '2024-01-16',
-                    'delivery_date': None,
-                    'priority': 'medium',
-                    'items_count': 3
-                },
-                {
-                    'id': 3,
-                    'customer_name': 'Pierre Durand',
-                    'point_of_sale_name': 'Supermarché Central',
-                    'status': 'shipped',
-                    'total': 62000.0,
-                    'date': '2024-01-14',
-                    'delivery_date': '2024-01-17',
-                    'priority': 'low',
-                    'items_count': 8
-                }
-            ]
-            serializer = OrderReportSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_customer_name(self, order):
-        """Récupère le nom du client"""
-        if order.customer and order.customer.user:
-            if order.customer.user.get_full_name():
-                return order.customer.user.get_full_name()
-            return order.customer.user.username
-        return 'Client inconnu'
-
-class FinancialReportsAPIView(APIView):
-    """API pour les rapports financiers"""
-    
-    def get(self, request):
-        try:
-            period = request.GET.get('period', 'month')
-            date_from, date_to = self.get_date_range(period)
-            
-            # Utiliser les commandes pour le calcul financier
-            orders = Order.objects.filter(
-                date__range=[date_from, date_to],
-                status__in=['delivered', 'shipped']
-            )
-            
-            total_revenue = orders.aggregate(total=Sum('total'))['total'] or 0
-            total_orders = orders.count()
-            average_order_value = total_revenue / total_orders if total_orders > 0 else 0
-            
-            # Calcul de la croissance (simplifié)
-            previous_revenue = self.get_previous_period_revenue(period)
-            revenue_growth = self.calculate_growth(total_revenue, previous_revenue)
-            
-            data = {
-                'period': period,
-                'total_revenue': float(total_revenue),
+            points_of_sale_data.append({
+                'id': pos.id,
+                'name': pos.name,
+                'owner': pos.owner,
+                'type': pos.type,
+                'status': pos.status,
+                'region': pos.region,
+                'commune': pos.commune,
+                'total_products': total_products,
                 'total_orders': total_orders,
-                'average_order_value': float(average_order_value),
-                'revenue_growth': revenue_growth,
-            }
+                'total_sales': float(total_sales),
+                'monthly_orders': pos.monthly_orders,
+                'turnover': float(pos.turnover),
+                'evaluation_score': pos.evaluation_score,
+            })
             
-            serializer = FinancialReportSerializer(data)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in FinancialReportsAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = {
-                'period': 'month',
-                'total_revenue': 1250000.0,
-                'total_orders': 45,
-                'average_order_value': 27777.78,
-                'revenue_growth': 12.5
-            }
-            serializer = FinancialReportSerializer(demo_data)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'today':
-            return today, today
-        elif period == 'week':
-            return today - timedelta(days=7), today
-        elif period == 'month':
-            return today - timedelta(days=30), today
-        elif period == 'year':
-            return today - timedelta(days=365), today
-        return today - timedelta(days=30), today
-    
-    def get_previous_period_revenue(self, period):
-        today = timezone.now().date()
-        if period == 'today':
-            previous_date = today - timedelta(days=1)
-            orders = Order.objects.filter(
-                date=previous_date,
-                status__in=['delivered', 'shipped']
-            )
-        elif period == 'week':
-            previous_date_from = today - timedelta(days=14)
-            previous_date_to = today - timedelta(days=7)
-            orders = Order.objects.filter(
-                date__range=[previous_date_from, previous_date_to],
-                status__in=['delivered', 'shipped']
-            )
-        elif period == 'month':
-            previous_date_from = today - timedelta(days=60)
-            previous_date_to = today - timedelta(days=30)
-            orders = Order.objects.filter(
-                date__range=[previous_date_from, previous_date_to],
-                status__in=['delivered', 'shipped']
-            )
-        else:
-            return 0
-            
-        return orders.aggregate(total=Sum('total'))['total'] or 0
-    
-    def calculate_growth(self, current, previous):
-        if previous == 0:
-            return None
-        return round(((current - previous) / previous) * 100, 2)
-
-# Views pour Graphiques
-class SalesTrendChartAPIView(APIView):
-    """API pour le graphique de tendance des ventes"""
-    
-    def get(self, request):
-        try:
-            days = int(request.GET.get('days', 30))
-            end_date = timezone.now().date()
-            start_date = end_date - timedelta(days=days)
-            
-            # Générer les dates de la période
-            date_list = [start_date + timedelta(days=x) for x in range(days + 1)]
-            
-            trends = []
-            for single_date in date_list:
-                # Utiliser le modèle Sale pour les ventes
-                daily_sales = Sale.objects.filter(
-                    timestamp__date=single_date
-                ).aggregate(
-                    total_sales=Sum(F('quantity') * F('price')),
-                    total_quantity=Sum('quantity')
-                )
-                
-                trends.append({
-                    'date': single_date,
-                    'total_sales': daily_sales['total_sales'] or 0,
-                    'total_quantity': daily_sales['total_quantity'] or 0
-                })
-            
-            serializer = SalesTrendSerializer(trends, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in SalesTrendChartAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = []
-            for i in range(30):
-                date = (timezone.now().date() - timedelta(days=29-i))
-                demo_data.append({
-                    'date': date,
-                    'total_sales': 100000 + (i * 5000),
-                    'total_quantity': 50 + (i * 2)
-                })
-            serializer = SalesTrendSerializer(demo_data, many=True)
-            return Response(serializer.data)
-
-class CategorySalesChartAPIView(APIView):
-    """API pour le graphique camembert des ventes par catégorie"""
-    
-    def get(self, request):
-        try:
-            period = request.GET.get('period', 'month')
-            date_from, date_to = self.get_date_range(period)
-            
-            # Utiliser une approche plus simple et directe
-            category_sales = Sale.objects.filter(
-                timestamp__range=[date_from, date_to],
-                vendor_activity__related_order__items__product_variant__product__category__isnull=False
-            ).values(
-                category_name=F('vendor_activity__related_order__items__product_variant__product__category__name')
-            ).annotate(
-                total_sales=Sum(F('quantity') * F('price'))
-            ).order_by('-total_sales')
-            
-            # Alternative si la relation est trop complexe
-            if not category_sales:
-                # Récupérer toutes les catégories avec leurs ventes
-                categories = Category.objects.all()
-                category_data = []
-                
-                for category in categories:
-                    category_sales_total = Sale.objects.filter(
-                        timestamp__range=[date_from, date_to],
-                        vendor_activity__related_order__items__product_variant__product__category=category
-                    ).aggregate(
-                        total=Sum(F('quantity') * F('price'))
-                    )['total'] or 0
-                    
-                    if category_sales_total > 0:
-                        category_data.append({
-                            'category_name': category.name,
-                            'total_sales': category_sales_total
-                        })
-                
-                category_sales = category_data
-            
-            total_sales_all = sum(item['total_sales'] for item in category_sales if isinstance(item, dict))
-            
-            data = []
-            for category in category_sales:
-                if isinstance(category, dict):
-                    percentage = (category['total_sales'] / total_sales_all * 100) if total_sales_all > 0 else 0
-                    data.append({
-                        'category_name': category['category_name'] or 'Sans catégorie',
-                        'total_sales': category['total_sales'],
-                        'percentage': round(percentage, 2)
-                    })
-            
-            serializer = CategorySalesSerializer(data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in CategorySalesChartAPIView: {str(e)}")
-            # Retourner des données de démonstration en cas d'erreur
-            demo_data = [
-                {'category_name': 'Céréales', 'total_sales': 1500000, 'percentage': 35.0},
-                {'category_name': 'Huiles', 'total_sales': 1200000, 'percentage': 28.0},
-                {'category_name': 'Épicerie', 'total_sales': 900000, 'percentage': 21.0},
-                {'category_name': 'Autres', 'total_sales': 600000, 'percentage': 16.0}
-            ]
-            serializer = CategorySalesSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'week':
-            return today - timedelta(days=7), today
-        elif period == 'month':
-            return today - timedelta(days=30), today
-        elif period == 'year':
-            return today - timedelta(days=365), today
-        return today - timedelta(days=30), today
-
-class VendorComparisonChartAPIView(APIView):
-    """API pour le graphique de comparaison des vendeurs"""
-    
-    def get(self, request):
-        try:
-            limit = int(request.GET.get('limit', 10))
-            period = request.GET.get('period', 'month')
-            date_from, date_to = self.get_date_range(period)
-            
-            # Approche simplifiée pour les performances des vendeurs
-            vendors_performance = MobileVendor.objects.annotate(
-                total_sales=Sum(
-                    F('activities__sales__quantity') * F('activities__sales__price'),
-                    filter=Q(activities__timestamp__range=[date_from, date_to])
-                ),
-                total_quantity=Sum(
-                    'activities__sales__quantity',
-                    filter=Q(activities__timestamp__range=[date_from, date_to])
-                )
-            ).filter(
-                total_sales__isnull=False
-            ).values(
-                'id', 'first_name', 'last_name', 'performance', 'point_of_sale__name'
-            ).order_by('-total_sales')[:limit]
-            
-            comparison_data = []
-            for vendor in vendors_performance:
-                comparison_data.append({
-                    'vendor_name': f"{vendor['first_name']} {vendor['last_name']}",
-                    'point_of_sale_name': vendor['point_of_sale__name'],
-                    'total_sales': vendor['total_sales'] or 0,
-                    'total_quantity': vendor['total_quantity'] or 0,
-                    'performance': vendor['performance'] or 0
-                })
-            
-            # Si pas de données, retourner des données de démonstration
-            if not comparison_data:
-                comparison_data = [
-                    {
-                        'vendor_name': 'Jean Dupont',
-                        'point_of_sale_name': 'Point de vente Central',
-                        'total_sales': 450000,
-                        'total_quantity': 150,
-                        'performance': 95.5
-                    },
-                    {
-                        'vendor_name': 'Marie Martin',
-                        'point_of_sale_name': 'Supermarché Nord',
-                        'total_sales': 380000,
-                        'total_quantity': 120,
-                        'performance': 88.2
-                    }
-                ]
-            
-            serializer = VendorComparisonSerializer(comparison_data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in VendorComparisonChartAPIView: {str(e)}")
-            # Données de démonstration en cas d'erreur
-            demo_data = [
-                {
-                    'vendor_name': 'Vendeur Démo 1',
-                    'point_of_sale_name': 'POS Central',
-                    'total_sales': 450000,
-                    'total_quantity': 150,
-                    'performance': 95.5
-                },
-                {
-                    'vendor_name': 'Vendeur Démo 2', 
-                    'point_of_sale_name': 'Supermarché Nord',
-                    'total_sales': 380000,
-                    'total_quantity': 120,
-                    'performance': 88.2
-                }
-            ]
-            serializer = VendorComparisonSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_date_range(self, period):
-        today = timezone.now().date()
-        if period == 'week':
-            return today - timedelta(days=7), today
-        elif period == 'month':
-            return today - timedelta(days=30), today
-        return today - timedelta(days=30), today
-
-class StockDistributionChartAPIView(APIView):
-    """API pour le graphique de distribution des stocks"""
-    
-    def get(self, request):
-        try:
-            # Compter les produits par statut de stock
-            stock_status = Product.objects.values('status').annotate(
-                count=Count('id')
-            ).order_by('status')
-            
-            total_products = sum(item['count'] for item in stock_status)
-            
-            distribution_data = []
-            for status in stock_status:
-                percentage = (status['count'] / total_products * 100) if total_products > 0 else 0
-                distribution_data.append({
-                    'status': self.get_status_display(status['status']),
-                    'count': status['count'],
-                    'percentage': round(percentage, 2)
-                })
-            
-            serializer = StockDistributionSerializer(distribution_data, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in StockDistributionChartAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {'status': 'En Stock', 'count': 45, 'percentage': 60.0},
-                {'status': 'Stock Faible', 'count': 15, 'percentage': 20.0},
-                {'status': 'Rupture', 'count': 10, 'percentage': 13.3},
-                {'status': 'Surstockage', 'count': 5, 'percentage': 6.7}
-            ]
-            serializer = StockDistributionSerializer(demo_data, many=True)
-            return Response(serializer.data)
-    
-    def get_status_display(self, status):
-        status_map = {
-            'en_stock': 'En Stock',
-            'stock_faible': 'Stock Faible',
-            'rupture': 'Rupture',
-            'surstockage': 'Surstockage'
+        return {
+            'summary': {
+                'total_points_of_sale': queryset.count(),
+                'active_points_of_sale': queryset.filter(status='actif').count(),
+                'total_turnover': sum(item['turnover'] for item in points_of_sale_data),
+                'average_evaluation': sum(item['evaluation_score'] for item in points_of_sale_data) / len(points_of_sale_data) if points_of_sale_data else 0
+            },
+            'points_of_sale': points_of_sale_data,
+            'by_type': list(queryset.values('type').annotate(count=Count('id'))),
+            'by_region': list(queryset.values('region').annotate(count=Count('id'))),
         }
-        return status_map.get(status, status)
 
-class RevenueTrendChartAPIView(APIView):
-    """API pour le graphique de tendance des revenus"""
-    
-    def get(self, request):
-        try:
-            months = int(request.GET.get('months', 12))
+    def _generate_sales_report(self, date_filter, point_of_sale, category):
+        # Implémentation du rapport des ventes
+        sales_data = Sale.objects.filter(date_filter)
+        
+        if point_of_sale:
+            sales_data = sales_data.filter(vendor__point_of_sale=point_of_sale)
             
-            end_date = timezone.now().date()
-            start_date = end_date - timedelta(days=months*30)
+        if category:
+            sales_data = sales_data.filter(product_variant__product__category=category)
             
-            # Générer les mois de la période
-            revenue_trends = []
-            current_date = start_date.replace(day=1)
-            
-            while current_date <= end_date:
-                next_month = current_date.replace(day=28) + timedelta(days=4)
-                month_end = next_month - timedelta(days=next_month.day - 1)
-                
-                monthly_orders = Order.objects.filter(
-                    date__year=current_date.year,
-                    date__month=current_date.month,
-                    status__in=['delivered', 'shipped']
-                )
-                
-                monthly_revenue = monthly_orders.aggregate(
-                    total=Sum('total')
-                )['total'] or 0
-                
-                orders_count = monthly_orders.count()
-                
-                revenue_trends.append({
-                    'period': current_date.strftime('%Y-%m'),
-                    'revenue': float(monthly_revenue),
-                    'orders': orders_count
-                })
-                
-                # Passer au mois suivant
-                if current_date.month == 12:
-                    current_date = current_date.replace(year=current_date.year + 1, month=1)
-                else:
-                    current_date = current_date.replace(month=current_date.month + 1)
-            
-            serializer = RevenueTrendSerializer(revenue_trends, many=True)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            print(f"Error in RevenueTrendChartAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = []
-            current_date = timezone.now().date().replace(day=1)
-            for i in range(12):
-                period_date = current_date - timedelta(days=30*i)
-                demo_data.append({
-                    'period': period_date.strftime('%Y-%m'),
-                    'revenue': 1000000 + (i * 50000),
-                    'orders': 40 + (i * 2)
-                })
-            demo_data.reverse()
-            serializer = RevenueTrendSerializer(demo_data, many=True)
-            return Response(serializer.data)
+        total_sales = sales_data.aggregate(
+            total_amount=Sum('total_amount'),
+            total_quantity=Sum('quantity')
+        )
+        
+        sales_by_product = sales_data.values(
+            'product_variant__product__name',
+            'product_variant__product__category__name'
+        ).annotate(
+            total_sold=Sum('quantity'),
+            total_revenue=Sum('total_amount')
+        ).order_by('-total_revenue')
+        
+        return {
+            'summary': {
+                'total_sales': float(total_sales['total_amount'] or 0),
+                'total_quantity': total_sales['total_quantity'] or 0,
+                'average_sale': float(total_sales['total_amount'] or 0) / sales_data.count() if sales_data.count() > 0 else 0
+            },
+            'sales_by_product': list(sales_by_product),
+            'daily_sales': list(sales_data.extra(
+                {'date': "date(created_at)"}
+            ).values('date').annotate(
+                daily_sales=Sum('total_amount')
+            ).order_by('date'))
+        }
 
-class PointOfSalePerformanceAPIView(APIView):
-    """API pour les performances des points de vente"""
-    
-    def get(self, request):
-        try:
-            point_of_sale_performance = PointOfSale.objects.filter(
-                status='actif'
-            ).annotate(
-                total_products=Count('products'),
-                total_orders=Count('orders'),
-                total_sales=Sum('orders__total')
-            ).values(
-                'name', 'type', 'district', 'total_products', 
-                'total_orders', 'total_sales', 'turnover'
-            ).order_by('-total_sales')
+    def _generate_stocks_report(self, point_of_sale, category):
+        # Implémentation du rapport des stocks
+        products = Product.objects.all()
+        
+        if point_of_sale:
+            products = products.filter(point_of_sale=point_of_sale)
             
-            return Response(list(point_of_sale_performance))
+        if category:
+            products = products.filter(category=category)
             
-        except Exception as e:
-            print(f"Error in PointOfSalePerformanceAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = [
-                {
-                    'name': 'Supermarché Central',
-                    'type': 'supermarche',
-                    'district': 'Plateau',
-                    'total_products': 120,
-                    'total_orders': 45,
-                    'total_sales': 4500000,
-                    'turnover': 15000000
-                },
-                {
-                    'name': 'Boutique Nord',
-                    'type': 'boutique',
-                    'district': 'Cocody',
-                    'total_products': 80,
-                    'total_orders': 25,
-                    'total_sales': 1800000,
-                    'turnover': 6000000
-                }
-            ]
-            return Response(demo_data)
+        stock_data = []
+        for product in products:
+            variants = product.variants.all()
+            total_stock = variants.aggregate(total=Sum('current_stock'))['total'] or 0
+            min_stock = variants.aggregate(total=Sum('min_stock'))['total'] or 0
+            max_stock = variants.aggregate(total=Sum('max_stock'))['total'] or 0
+            
+            stock_data.append({
+                'id': product.id,
+                'name': product.name,
+                'sku': product.sku,
+                'category': product.category.name if product.category else 'N/A',
+                'supplier': product.supplier.name if product.supplier else 'N/A',
+                'point_of_sale': product.point_of_sale.name,
+                'status': product.status,
+                'total_stock': total_stock,
+                'min_stock': min_stock,
+                'max_stock': max_stock,
+                'variants_count': variants.count(),
+            })
+            
+        return {
+            'summary': {
+                'total_products': products.count(),
+                'total_stock': sum(item['total_stock'] for item in stock_data),
+                'low_stock_products': len([item for item in stock_data if item['total_stock'] <= item['min_stock']]),
+                'out_of_stock_products': len([item for item in stock_data if item['total_stock'] == 0]),
+            },
+            'products': stock_data,
+            'by_category': list(products.values('category__name').annotate(
+                count=Count('id'),
+                total_stock=Sum('variants__current_stock')
+            )),
+        }
 
-class RealTimeMetricsAPIView(APIView):
-    """API pour les métriques en temps réel"""
-    
-    def get(self, request):
-        try:
-            today = timezone.now().date()
+    def _generate_orders_report(self, date_filter, point_of_sale):
+        # Implémentation du rapport des commandes
+        orders = Order.objects.filter(date_filter)
+        
+        if point_of_sale:
+            orders = orders.filter(point_of_sale=point_of_sale)
             
-            # Ventes du jour
-            today_sales = Sale.objects.filter(
-                timestamp__date=today
-            ).aggregate(
-                amount=Sum(F('quantity') * F('price')),
-                quantity=Sum('quantity')
-            )
+        orders_data = []
+        for order in orders:
+            items_count = order.items.count()
+            orders_data.append({
+                'id': order.id,
+                'customer': order.customer.user.get_full_name() or order.customer.user.username,
+                'point_of_sale': order.point_of_sale.name,
+                'status': order.status,
+                'total': float(order.total),
+                'date': order.date,
+                'delivery_date': order.delivery_date,
+                'priority': order.priority,
+                'items_count': items_count,
+            })
             
-            # Commandes du jour
-            today_orders = Order.objects.filter(date=today).count()
+        return {
+            'summary': {
+                'total_orders': orders.count(),
+                'total_amount': float(orders.aggregate(total=Sum('total'))['total'] or 0),
+                'average_order_value': float(orders.aggregate(total=Sum('total'))['total'] or 0) / orders.count() if orders.count() > 0 else 0,
+                'pending_orders': orders.filter(status='pending').count(),
+                'delivered_orders': orders.filter(status='delivered').count(),
+            },
+            'orders': orders_data,
+            'by_status': list(orders.values('status').annotate(count=Count('id'), total=Sum('total'))),
+            'by_priority': list(orders.values('priority').annotate(count=Count('id'))),
+        }
+
+    def _generate_vendors_report(self, date_filter, point_of_sale):
+        # Implémentation du rapport des vendeurs ambulants
+        vendors = MobileVendor.objects.all()
+        
+        if point_of_sale:
+            vendors = vendors.filter(point_of_sale=point_of_sale)
             
-            # Vendeurs actifs aujourd'hui
-            active_vendors_today = MobileVendor.objects.filter(
-                activities__timestamp__date=today,
-                activities__activity_type__in=['check_in', 'sale']
-            ).distinct().count()
+        vendors_data = []
+        for vendor in vendors:
+            total_sales = vendor.sales_vendors.filter(date_filter).aggregate(
+                total=Sum('total_amount')
+            )['total'] or 0
             
-            # Alertes stock urgentes
-            urgent_stock_alerts = ProductVariant.objects.filter(
-                current_stock__lte=F('min_stock')
-            ).count()
+            vendors_data.append({
+                'id': vendor.id,
+                'full_name': vendor.full_name,
+                'point_of_sale': vendor.point_of_sale.name,
+                'status': vendor.status,
+                'vehicle_type': vendor.vehicle_type,
+                'zones': vendor.zones,
+                'performance': vendor.performance,
+                'average_daily_sales': float(vendor.average_daily_sales),
+                'total_sales': float(total_sales),
+                'total_activities': vendor.activities.count(),
+            })
             
-            data = {
-                'today_sales_amount': float(today_sales['amount'] or 0),
-                'today_sales_quantity': today_sales['quantity'] or 0,
-                'today_orders': today_orders,
-                'active_vendors_today': active_vendors_today,
-                'urgent_stock_alerts': urgent_stock_alerts,
-                'last_updated': timezone.now()
-            }
+        return {
+            'summary': {
+                'total_vendors': vendors.count(),
+                'active_vendors': vendors.filter(status='actif').count(),
+                'total_sales': float(sum(item['total_sales'] for item in vendors_data)),
+                'average_performance': sum(item['performance'] for item in vendors_data) / len(vendors_data) if vendors_data else 0,
+            },
+            'vendors': vendors_data,
+            'by_status': list(vendors.values('status').annotate(count=Count('id'))),
+            'by_vehicle': list(vendors.values('vehicle_type').annotate(count=Count('id'))),
+        }
+
+    def _generate_purchases_report(self, date_filter, point_of_sale):
+        # Implémentation du rapport des clients/achats
+        purchases = Purchase.objects.filter(date_filter)
+        
+        if point_of_sale:
+            purchases = purchases.filter(vendor__point_of_sale=point_of_sale)
             
-            serializer = RealTimeMetricsSerializer(data)
-            return Response(serializer.data)
+        purchases_data = []
+        for purchase in purchases:
+            purchases_data.append({
+                'id': purchase.id,
+                'full_name': purchase.full_name,
+                'vendor': purchase.vendor.full_name,
+                'zone': purchase.zone,
+                'amount': float(purchase.amount),
+                'purchase_date': purchase.purchase_date,
+                'base': purchase.base,
+                'pushcard_type': purchase.pushcard_type,
+            })
             
-        except Exception as e:
-            print(f"Error in RealTimeMetricsAPIView: {str(e)}")
-            # Données de démonstration
-            demo_data = {
-                'today_sales_amount': 125000.0,
-                'today_sales_quantity': 45,
-                'today_orders': 12,
-                'active_vendors_today': 8,
-                'urgent_stock_alerts': 3,
-                'last_updated': timezone.now()
-            }
-            serializer = RealTimeMetricsSerializer(demo_data)
-            return Response(serializer.data)
+        return {
+            'summary': {
+                'total_purchases': purchases.count(),
+                'total_amount': float(purchases.aggregate(total=Sum('amount'))['total'] or 0),
+                'average_purchase': float(purchases.aggregate(total=Sum('amount'))['total'] or 0) / purchases.count() if purchases.count() > 0 else 0,
+            },
+            'purchases': purchases_data,
+            'by_zone': list(purchases.values('zone').annotate(
+                count=Count('id'), 
+                total=Sum('amount')
+            )),
+        }
+
+    def _generate_performance_report(self, date_filter, point_of_sale):
+        # Rapport de performance global
+        return {
+            'points_of_sale': self._generate_points_of_sale_report(date_filter, point_of_sale),
+            'sales': self._generate_sales_report(date_filter, point_of_sale, None),
+            'orders': self._generate_orders_report(date_filter, point_of_sale),
+            'vendors': self._generate_vendors_report(date_filter, point_of_sale),
+        }
+
+    def _generate_file(self, report_data, report_type, format_type):
+        if format_type == 'excel':
+            return self._generate_excel_file(report_data, report_type)
+        else:  # PDF
+            return self._generate_pdf_file(report_data, report_type)
+
+    def _generate_excel_file(self, report_data, report_type):
+        output = io.BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Créer différentes feuilles selon le type de rapport
+            if 'summary' in report_data:
+                summary_df = pd.DataFrame([report_data['summary']])
+                summary_df.to_excel(writer, sheet_name='Résumé', index=False)
+                
+            # Ajouter d'autres feuilles selon la structure des données
+            for key, data in report_data.items():
+                if key != 'summary' and isinstance(data, list) and data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name=key.capitalize(), index=False)
+        
+        output.seek(0)
+        return output
+
+    def _generate_pdf_file(self, report_data, report_type):
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Titre
+        title = Paragraph(f"Rapport {report_type}", styles['Title'])
+        story.append(title)
+        
+        # Résumé
+        if 'summary' in report_data:
+            summary_data = [['Métrique', 'Valeur']]
+            for key, value in report_data['summary'].items():
+                summary_data.append([key.replace('_', ' ').title(), str(value)])
+            
+            summary_table = Table(summary_data)
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(summary_table)
+        
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        report = self.get_object()
+        if report.file:
+            response = HttpResponse(report.file.read(), content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{report.title}.{report.format}"'
+            return response
+        return Response({'error': 'Fichier non disponible'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'])
+    def dashboard(self, request):
+        # Données pour le tableau de bord
+        today = timezone.now().date()
+        last_month = today - timedelta(days=30)
+        
+        # Statistiques générales
+        total_sales = Sale.objects.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_orders = Order.objects.count()
+        total_products = Product.objects.count()
+        total_vendors = MobileVendor.objects.count()
+        total_points_of_sale = PointOfSale.objects.count()
+        
+        # Rapports par type
+        reports_by_type = Report.objects.values('report_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Activité récente (30 derniers jours)
+        recent_reports = Report.objects.filter(
+            created_at__date__gte=last_month
+        ).values('created_at__date').annotate(
+            generated=Count('id')
+        ).order_by('created_at__date')
+        
+        # Derniers rapports générés
+        latest_reports = Report.objects.all()[:10].values(
+            'id', 'title', 'report_type', 'point_of_sale__name', 
+            'start_date', 'end_date', 'size', 'created_at'
+        )
+        
+        dashboard_data = {
+            'total_sales': float(total_sales),
+            'total_orders': total_orders,
+            'total_products': total_products,
+            'total_vendors': total_vendors,
+            'total_points_of_sale': total_points_of_sale,
+            'reports_by_type': list(reports_by_type),
+            'recent_activity': list(recent_reports),
+            'recent_reports': list(latest_reports),
+        }
+        
+        serializer = DashboardSerializer(dashboard_data)
+        return Response(serializer.data)
