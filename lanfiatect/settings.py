@@ -200,7 +200,6 @@ SIMPLE_JWT = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# # AJOUTER à la fin du fichier :
 # # Security settings for production
 # if not DEBUG:
 #     SECURE_SSL_REDIRECT = True
