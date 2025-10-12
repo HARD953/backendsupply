@@ -28,7 +28,7 @@ from .views_rapports import (
 #from .viewser import ReportViewSet, DashboardViewSet
 from .views import UserProfileViewSet
 from .views_per import VendorViewSet
-from .views1 import ReportViewSet
+from .views1 import ReportViewSet,StatisticsViewSet
 
 from . import views
 
@@ -44,6 +44,7 @@ router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, base
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
+router.register(r'statistics', StatisticsViewSet, basename='statistics')
 router.register(r'reports', ReportViewSet, basename='reports')
 
 
@@ -132,17 +133,12 @@ urlpatterns = [
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
 
 
-    # Résumé du dashboard
-        # URLs supplémentaires pour les rapports spécifiques
-    path('reports/points-vente/', ReportViewSet.as_view({'get': 'list'}), 
-         {'type': 'points_vente'}, name='points-vente-reports'),
-    path('reports/ventes/', ReportViewSet.as_view({'get': 'list'}), 
-         {'type': 'ventes'}, name='sales-reports'),
-    path('reports/commandes/', ReportViewSet.as_view({'get': 'list'}), 
-         {'type': 'commandes'}, name='orders-reports'),
-    path('reports/vendeurs/', ReportViewSet.as_view({'get': 'list'}), 
-         {'type': 'vendeurs'}, name='vendors-reports'),
-
+    # Routes spécifiques pour un accès rapide
+    path('api/dashboard/summary/', StatisticsViewSet.as_view({'get': 'dashboard_summary'})),
+    path('api/dashboard/pos-stats/', StatisticsViewSet.as_view({'get': 'points_of_sale_stats'})),
+    path('api/dashboard/vendor-stats/', StatisticsViewSet.as_view({'get': 'mobile_vendors_stats'})),
+    path('api/dashboard/product-stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
+    path('api/dashboard/sales-timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
     path('', include(router.urls)),
 ]
 
