@@ -1,4 +1,4 @@
-# views.py
+# views.py - Version complètement corrigée sans erreurs de types
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -29,11 +29,12 @@ class StatisticsViewSet(viewsets.ViewSet):
             # Statistiques de base avec gestion des types
             total_sales_agg = Sale.objects.aggregate(
                 total=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             )
-            total_sales = total_sales_agg['total']
+            total_sales = total_sales_agg['total'] or 0
             
             total_orders = Order.objects.count()
             total_mobile_vendors = MobileVendor.objects.filter(status='actif').count()
@@ -50,22 +51,24 @@ class StatisticsViewSet(viewsets.ViewSet):
                 created_at__lte=end_date
             ).aggregate(
                 total=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             )
-            current_period_sales = current_period_sales_agg['total']
+            current_period_sales = current_period_sales_agg['total'] or 0
             
             previous_period_sales_agg = Sale.objects.filter(
                 created_at__gte=previous_start_date,
                 created_at__lt=start_date
             ).aggregate(
                 total=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             )
-            previous_period_sales = previous_period_sales_agg['total']
+            previous_period_sales = previous_period_sales_agg['total'] or 0
             
             sales_growth = self._calculate_growth(float(current_period_sales), float(previous_period_sales))
             
@@ -75,11 +78,12 @@ class StatisticsViewSet(viewsets.ViewSet):
                 created_at__lt=start_date
             ).aggregate(
                 total=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             )
-            previous_revenue = previous_revenue_agg['total']
+            previous_revenue = previous_revenue_agg['total'] or 0
             
             revenue_growth = self._calculate_growth(float(current_revenue), float(previous_revenue))
             
@@ -115,11 +119,12 @@ class StatisticsViewSet(viewsets.ViewSet):
                     vendor_activity__vendor__point_of_sale=pos
                 ).aggregate(
                     total=Coalesce(
-                        Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                        0
+                        Sum('total_amount'), 
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
                     )
                 )
-                total_sales = sales_agg['total']
+                total_sales = sales_agg['total'] or 0
                 
                 # Commandes du POS
                 total_orders = Order.objects.filter(point_of_sale=pos).count()
@@ -129,11 +134,12 @@ class StatisticsViewSet(viewsets.ViewSet):
                     point_of_sale=pos
                 ).aggregate(
                     avg=Coalesce(
-                        Avg('total', output_field=DecimalField(max_digits=10, decimal_places=2)), 
-                        0
+                        Avg('total'), 
+                        0,
+                        output_field=DecimalField(max_digits=10, decimal_places=2)
                     )
                 )
-                avg_order_value = avg_order_agg['avg']
+                avg_order_value = avg_order_agg['avg'] or 0
                 
                 # Nombre de vendeurs ambulants
                 mobile_vendors_count = pos.mobile_vendors.count()
@@ -184,32 +190,53 @@ class StatisticsViewSet(viewsets.ViewSet):
                 end_date = timezone.now()
                 start_date = end_date - timedelta(days=int(period))
                 
-                # Ventes du vendeur avec gestion des types
-                vendor_sales_agg = Sale.objects.filter(
+                # Ventes du vendeur - agrégations séparées pour éviter les mixed types
+                sales_amount_agg = Sale.objects.filter(
                     vendor=vendor,
                     created_at__gte=start_date
                 ).aggregate(
                     total_sales=Coalesce(
-                        Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                        0
-                    ),
-                    total_quantity=Coalesce(Sum('quantity'), 0)
+                        Sum('total_amount'), 
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    )
                 )
                 
-                # Achats liés au vendeur avec gestion des types
-                purchases_agg = Purchase.objects.filter(
+                sales_quantity_agg = Sale.objects.filter(
+                    vendor=vendor,
+                    created_at__gte=start_date
+                ).aggregate(
+                    total_quantity=Coalesce(
+                        Sum('quantity'), 
+                        0,
+                        output_field=IntegerField()
+                    )
+                )
+                
+                total_sales = sales_amount_agg['total_sales'] or 0
+                total_quantity = sales_quantity_agg['total_quantity'] or 0
+                
+                # Achats liés au vendeur - agrégations séparées
+                purchases_amount_agg = Purchase.objects.filter(
                     vendor=vendor,
                     purchase_date__gte=start_date
                 ).aggregate(
                     total_amount=Coalesce(
-                        Sum('amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                        0
-                    ),
+                        Sum('amount'), 
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    )
+                )
+                
+                purchases_count_agg = Purchase.objects.filter(
+                    vendor=vendor,
+                    purchase_date__gte=start_date
+                ).aggregate(
                     count=Count('id')
                 )
                 
-                total_purchases = purchases_agg['count']
-                total_purchase_amount = purchases_agg['total_amount']
+                total_purchases = purchases_count_agg['count'] or 0
+                total_purchase_amount = purchases_amount_agg['total_amount'] or 0
                 
                 # Jours d'activité
                 active_days = vendor.activities.filter(
@@ -219,7 +246,7 @@ class StatisticsViewSet(viewsets.ViewSet):
                 # Taux d'efficacité (ventes / achats)
                 efficiency_rate = 0
                 if total_purchase_amount and float(total_purchase_amount) > 0:
-                    efficiency_rate = (float(vendor_sales_agg['total_sales']) / float(total_purchase_amount)) * 100
+                    efficiency_rate = (float(total_sales) / float(total_purchase_amount)) * 100
                 
                 # Calcul de la valeur moyenne d'achat
                 average_purchase_value = 0
@@ -232,7 +259,7 @@ class StatisticsViewSet(viewsets.ViewSet):
                     'phone': vendor.phone,
                     'status': vendor.status,
                     'vehicle_type': vendor.vehicle_type,
-                    'total_sales': float(vendor_sales_agg['total_sales']),
+                    'total_sales': float(total_sales),
                     'total_purchases': total_purchases,
                     'average_purchase_value': round(average_purchase_value, 2),
                     'active_days': active_days,
@@ -267,28 +294,42 @@ class StatisticsViewSet(viewsets.ViewSet):
                 end_date = timezone.now()
                 start_date = end_date - timedelta(days=int(period))
                 
-                # Ventes du produit avec gestion des types
-                product_sales_agg = Sale.objects.filter(
+                # Ventes du produit - agrégations séparées
+                product_revenue_agg = Sale.objects.filter(
                     product_variant__product=product,
                     created_at__gte=start_date
                 ).aggregate(
-                    total_quantity=Coalesce(Sum('quantity'), 0),
                     total_revenue=Coalesce(
-                        Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                        0
+                        Sum('total_amount'), 
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
                     )
                 )
                 
+                product_quantity_agg = Sale.objects.filter(
+                    product_variant__product=product,
+                    created_at__gte=start_date
+                ).aggregate(
+                    total_quantity=Coalesce(
+                        Sum('quantity'), 
+                        0,
+                        output_field=IntegerField()
+                    )
+                )
+                
+                total_quantity = product_quantity_agg['total_quantity'] or 0
+                total_revenue = product_revenue_agg['total_revenue'] or 0
+                
                 # Prix moyen
                 average_price = 0
-                if product_sales_agg['total_quantity'] > 0:
-                    average_price = float(product_sales_agg['total_revenue']) / product_sales_agg['total_quantity']
+                if total_quantity > 0:
+                    average_price = float(total_revenue) / total_quantity
                 
                 # Rotation des stocks
                 stock_rotation = 0
                 total_stock = sum(variant.current_stock for variant in product.variants.all())
                 if total_stock > 0:
-                    stock_rotation = product_sales_agg['total_quantity'] / total_stock
+                    stock_rotation = total_quantity / total_stock
                 
                 product_data = {
                     'id': product.id,
@@ -296,8 +337,8 @@ class StatisticsViewSet(viewsets.ViewSet):
                     'sku': product.sku,
                     'category': product.category.name if product.category else '',
                     'status': product.status,
-                    'total_quantity_sold': product_sales_agg['total_quantity'],
-                    'total_revenue': float(product_sales_agg['total_revenue']),
+                    'total_quantity_sold': total_quantity,
+                    'total_revenue': float(total_revenue),
                     'average_price': round(average_price, 2),
                     'stock_rotation': round(stock_rotation, 2)
                 }
@@ -330,8 +371,9 @@ class StatisticsViewSet(viewsets.ViewSet):
             ).annotate(
                 purchase_count=Count('id'),
                 total_amount=Coalesce(
-                    Sum('amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 ),
                 last_purchase=Max('purchase_date')
             ).order_by('-total_amount')
@@ -402,8 +444,9 @@ class StatisticsViewSet(viewsets.ViewSet):
                 period=trunc_func
             ).values('period').annotate(
                 value=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             ).order_by('period')
             
@@ -486,14 +529,16 @@ class StatisticsViewSet(viewsets.ViewSet):
             # Agrégation par zone
             zone_data = Purchase.objects.values('zone').annotate(
                 total_sales=Coalesce(
-                    Sum('amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 ),
                 purchase_count=Count('id'),
                 vendor_count=Count('vendor', distinct=True),
                 avg_purchase=Coalesce(
-                    Avg('amount', output_field=DecimalField(max_digits=10, decimal_places=2)), 
-                    0
+                    Avg('amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
                 )
             ).order_by('-total_sales')
             
@@ -533,17 +578,24 @@ class StatisticsViewSet(viewsets.ViewSet):
             # Agrégations principales
             revenue_analytics = Sale.objects.filter(**filters).aggregate(
                 total_revenue=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 ),
-                total_quantity=Coalesce(Sum('quantity'), 0),
+                total_quantity=Coalesce(
+                    Sum('quantity'), 
+                    0,
+                    output_field=IntegerField()
+                ),
                 avg_transaction=Coalesce(
-                    Avg('total_amount', output_field=DecimalField(max_digits=10, decimal_places=2)), 
-                    0
+                    Avg('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
                 ),
                 max_transaction=Coalesce(
-                    Max('total_amount', output_field=DecimalField(max_digits=10, decimal_places=2)), 
-                    0
+                    Max('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
                 ),
                 transaction_count=Count('id')
             )
@@ -553,10 +605,16 @@ class StatisticsViewSet(viewsets.ViewSet):
                 'product_variant__product__category__name'
             ).annotate(
                 revenue=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
-                ),
-                quantity=Coalesce(Sum('quantity'), 0)
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
+                )
+            ).annotate(
+                quantity=Coalesce(
+                    Sum('quantity'), 
+                    0,
+                    output_field=IntegerField()
+                )
             ).order_by('-revenue')
             
             categories_data = []
@@ -572,8 +630,9 @@ class StatisticsViewSet(viewsets.ViewSet):
                 'vendor_activity__vendor__point_of_sale__name'
             ).annotate(
                 revenue=Coalesce(
-                    Sum('total_amount', output_field=DecimalField(max_digits=15, decimal_places=2)), 
-                    0
+                    Sum('total_amount'), 
+                    0,
+                    output_field=DecimalField(max_digits=15, decimal_places=2)
                 )
             ).order_by('-revenue')
             
@@ -620,7 +679,7 @@ class ReportViewSet(viewsets.ViewSet):
         """Rapport détaillé des ventes"""
         try:
             start_date = request.GET.get('start_date')
-            end_date = request.GET.get('start_date')
+            end_date = request.GET.get('end_date')
             pos_id = request.GET.get('pos_id')
             vendor_id = request.GET.get('vendor_id')
             

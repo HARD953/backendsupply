@@ -119,7 +119,6 @@ urlpatterns = [
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
     path('notifications/<int:id>/', NotificationDetailView.as_view(), name='notification-detail'),
 
-
     # Endpoint supplémentaire pour le dashboard
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
 
@@ -133,13 +132,13 @@ urlpatterns = [
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
 
     # Routes spécifiques pour un accès rapide
-    path('api/statistics/dashboard_summary/', StatisticsViewSet.as_view({'get': 'dashboard_summary'})),
-    path('api/statistics/points_of_sale_stats/', StatisticsViewSet.as_view({'get': 'points_of_sale_stats'})),
-    path('api/statistics/mobile_vendors_stats/', StatisticsViewSet.as_view({'get': 'mobile_vendors_stats'})),
-    path('api/statistics/products_stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
-    path('api/statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
-    path('api/statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
-    
+    path('statistics/dashboard_summary/', StatisticsViewSet.as_view({'get': 'dashboard_summary'})),
+    path('statistics/points_of_sale_stats/', StatisticsViewSet.as_view({'get': 'points_of_sale_stats'})),
+    path('statistics/mobile_vendors_stats/', StatisticsViewSet.as_view({'get': 'mobile_vendors_stats'})),
+    path('statistics/products_stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
+    path('statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
+    path('statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
+
     path('', include(router.urls)),
 ]
 
