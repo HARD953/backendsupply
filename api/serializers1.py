@@ -4,6 +4,28 @@ from django.db.models import Sum, Count, Avg, F, Window
 from django.db.models.functions import TruncDate, TruncMonth, TruncYear
 from .models import *
 
+class FilterSerializer(serializers.Serializer):
+    """Serializer pour les filtres"""
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    period = serializers.CharField(required=False)
+    point_of_sale = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
+    vendor = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
+    category = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
+    region = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )
+    zone = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )
+    group_by = serializers.CharField(required=False)
+
 class StatisticSerializer(serializers.Serializer):
     """Serializer de base pour les statistiques"""
     period = serializers.CharField()
@@ -18,13 +40,14 @@ class POSStatisticSerializer(serializers.ModelSerializer):
     average_order_value = serializers.DecimalField(max_digits=10, decimal_places=2)
     mobile_vendors_count = serializers.IntegerField()
     performance_score = serializers.FloatField()
+    sales_growth = serializers.DecimalField(max_digits=5, decimal_places=2, required=False)
     
     class Meta:
         model = PointOfSale
         fields = [
             'id', 'name', 'type', 'region', 'commune', 
             'total_sales', 'total_orders', 'average_order_value',
-            'mobile_vendors_count', 'performance_score', 'turnover'
+            'mobile_vendors_count', 'performance_score', 'turnover', 'sales_growth'
         ]
 
 class MobileVendorStatisticSerializer(serializers.ModelSerializer):
@@ -34,13 +57,14 @@ class MobileVendorStatisticSerializer(serializers.ModelSerializer):
     average_purchase_value = serializers.DecimalField(max_digits=10, decimal_places=2)
     active_days = serializers.IntegerField()
     efficiency_rate = serializers.FloatField()
+    sales_growth = serializers.DecimalField(max_digits=5, decimal_places=2, required=False)
     
     class Meta:
         model = MobileVendor
         fields = [
             'id', 'full_name', 'phone', 'status', 'vehicle_type',
             'total_sales', 'total_purchases', 'average_purchase_value',
-            'active_days', 'efficiency_rate', 'performance'
+            'active_days', 'efficiency_rate', 'performance', 'sales_growth'
         ]
 
 class ProductStatisticSerializer(serializers.ModelSerializer):
@@ -49,13 +73,14 @@ class ProductStatisticSerializer(serializers.ModelSerializer):
     total_revenue = serializers.DecimalField(max_digits=15, decimal_places=2)
     average_price = serializers.DecimalField(max_digits=10, decimal_places=2)
     stock_rotation = serializers.FloatField()
+    revenue_growth = serializers.DecimalField(max_digits=5, decimal_places=2, required=False)
     
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'sku', 'category', 'status',
             'total_quantity_sold', 'total_revenue', 'average_price',
-            'stock_rotation'
+            'stock_rotation', 'revenue_growth'
         ]
 
 class PurchaseStatisticSerializer(serializers.ModelSerializer):
@@ -87,3 +112,15 @@ class DashboardSummarySerializer(serializers.Serializer):
     active_purchases = serializers.IntegerField()
     sales_growth = serializers.DecimalField(max_digits=5, decimal_places=2)
     revenue_growth = serializers.DecimalField(max_digits=5, decimal_places=2)
+
+class ChartDataSerializer(serializers.Serializer):
+    """Serializer pour les données de graphiques"""
+    labels = serializers.ListField(child=serializers.CharField())
+    datasets = serializers.ListField(child=serializers.DictField())
+
+class ExportRequestSerializer(serializers.Serializer):
+    """Serializer pour les demandes d'export"""
+    format = serializers.ChoiceField(choices=['csv', 'excel', 'pdf'])
+    filters = FilterSerializer(required=False)
+    report_type = serializers.CharField()
+    columns = serializers.ListField(child=serializers.CharField(), required=False)

@@ -28,7 +28,7 @@ from .views_rapports import (
 #from .viewser import ReportViewSet, DashboardViewSet
 from .views import UserProfileViewSet
 from .views_per import VendorViewSet
-from .views1 import ReportViewSet,StatisticsViewSet
+from .views1 import StatisticsViewSet
 
 from . import views
 
@@ -45,7 +45,6 @@ router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
-router.register(r'reports', ReportViewSet, basename='reports')
 
 
 urlpatterns = [
@@ -138,6 +137,11 @@ urlpatterns = [
     path('statistics/products_stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
     path('statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
     path('statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
+
+        # Nouvelles URLs pour graphiques et exports
+    path('statistics/sales_chart/', StatisticsViewSet.as_view({'get': 'sales_chart'})),
+    path('statistics/performance_chart/', StatisticsViewSet.as_view({'get': 'performance_chart'})),
+    path('statistics/export_data/', StatisticsViewSet.as_view({'post': 'export_data'})),
 
     path('', include(router.urls)),
 ]
