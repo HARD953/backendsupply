@@ -132,13 +132,14 @@ urlpatterns = [
     path('carte/', views.get_customer_sales, name='customer-sales-sales'),
     path('pointsaleorders/', views.get_point_of_sale_orders_simple, name='pos-orders-simple'),
 
-
     # Routes spécifiques pour un accès rapide
-    path('api/dashboard/summary/', StatisticsViewSet.as_view({'get': 'dashboard_summary'})),
-    path('api/dashboard/pos-stats/', StatisticsViewSet.as_view({'get': 'points_of_sale_stats'})),
-    path('api/dashboard/vendor-stats/', StatisticsViewSet.as_view({'get': 'mobile_vendors_stats'})),
-    path('api/dashboard/product-stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
-    path('api/dashboard/sales-timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
+    path('api/statistics/dashboard_summary/', StatisticsViewSet.as_view({'get': 'dashboard_summary'})),
+    path('api/statistics/points_of_sale_stats/', StatisticsViewSet.as_view({'get': 'points_of_sale_stats'})),
+    path('api/statistics/mobile_vendors_stats/', StatisticsViewSet.as_view({'get': 'mobile_vendors_stats'})),
+    path('api/statistics/products_stats/', StatisticsViewSet.as_view({'get': 'products_stats'})),
+    path('api/statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
+    path('api/statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
+    
     path('', include(router.urls)),
 ]
 
