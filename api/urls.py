@@ -31,7 +31,7 @@ from .views_per import VendorViewSet
 from .views1 import StatisticsViewSet
 
 from . import views
-
+from . import views4
 
 # Création du routeur
 router = DefaultRouter()
@@ -142,6 +142,8 @@ urlpatterns = [
     path('statistics/sales_chart/', StatisticsViewSet.as_view({'get': 'sales_chart'})),
     path('statistics/performance_chart/', StatisticsViewSet.as_view({'get': 'performance_chart'})),
     path('statistics/export_data/', StatisticsViewSet.as_view({'post': 'export_data'})),
+
+    path('me/', views4.get_current_user_profile, name='user-profile'),
 
     path('', include(router.urls)),
 ]
