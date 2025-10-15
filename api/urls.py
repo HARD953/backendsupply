@@ -138,7 +138,7 @@ urlpatterns = [
     path('statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
     path('statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
 
-    path('statistics/purchase/', StatisticsViewSet.as_view({'get': 'top_purchases_stats'})),
+    path('statistics/purchase_stat/', StatisticsViewSet.as_view({'get': 'top_purchases_stats'})),
     path('statistics/top_purchase/', StatisticsViewSet.as_view({'get': 'top_purchases_by_vendor'})),
 
         # Nouvelles URLs pour graphiques et exports
