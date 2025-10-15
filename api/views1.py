@@ -810,3 +810,227 @@ class StatisticsViewSet(viewsets.ViewSet):
                 {'error': f'Erreur lors du calcul des stats produits: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    @action(detail=False, methods=['get'])
+    def top_purchases_stats(self, request):
+        """Statistiques des Purchases avec le plus de ventes et leur MobileVendor principal"""
+        try:
+            serializer = FilterSerializer(data=request.GET)
+            serializer.is_valid(raise_exception=True)
+            filters = serializer.validated_data
+            
+            # Récupérer tous les Purchases avec filtres
+            purchases_qs = Purchase.objects.select_related('vendor').all()
+            purchases_qs = self._apply_filters(purchases_qs, filters)
+            
+            purchase_stats = []
+            
+            for purchase in purchases_qs:
+                # Calculer le total des ventes liées à ce Purchase
+                sales_qs = Sale.objects.filter(customer=purchase)
+                sales_qs = self._apply_filters(sales_qs, filters)
+                
+                sales_agg = sales_qs.aggregate(
+                    total_sales_amount=Coalesce(
+                        Sum('total_amount'), 
+                        0, 
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    ),
+                    total_sales_count=Count('id')
+                )
+                
+                total_sales_amount = sales_agg['total_sales_amount'] or 0
+                total_sales_count = sales_agg['total_sales_count'] or 0
+                
+                # Récupérer le MobileVendor principal (celui qui a le plus approvisionné ce Purchase)
+                vendor_sales = sales_qs.values(
+                    'vendor__id', 
+                    'vendor__first_name', 
+                    'vendor__last_name',
+                    'vendor__phone'
+                ).annotate(
+                    vendor_total_sales=Coalesce(
+                        Sum('total_amount'),
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    ),
+                    vendor_sales_count=Count('id')
+                ).order_by('-vendor_total_sales')
+                
+                main_vendor = None
+                if vendor_sales:
+                    top_vendor = vendor_sales[0]
+                    main_vendor = {
+                        'id': top_vendor['vendor__id'],
+                        'full_name': f"{top_vendor['vendor__first_name']} {top_vendor['vendor__last_name']}",
+                        'phone': top_vendor['vendor__phone'],
+                        'total_sales_to_purchase': float(top_vendor['vendor_total_sales'] or 0),
+                        'sales_count_to_purchase': top_vendor['vendor_sales_count'] or 0
+                    }
+                
+                # Calculer le ratio d'approvisionnement du vendeur principal
+                main_vendor_ratio = 0
+                if main_vendor and float(total_sales_amount) > 0:
+                    main_vendor_ratio = (main_vendor['total_sales_to_purchase'] / float(total_sales_amount)) * 100
+                
+                purchase_data = {
+                    'purchase_id': purchase.id,
+                    'purchase_full_name': purchase.full_name,
+                    'purchase_zone': purchase.zone,
+                    'purchase_amount': float(purchase.amount),
+                    'purchase_date': purchase.purchase_date.isoformat(),
+                    'purchase_base': purchase.base,
+                    'purchase_pushcard_type': purchase.pushcard_type,
+                    'purchase_phone': purchase.phone,
+                    
+                    # Statistiques des ventes
+                    'total_sales_amount': float(total_sales_amount),
+                    'total_sales_count': total_sales_count,
+                    'sales_efficiency': round((float(total_sales_amount) / float(purchase.amount)) * 100, 2) if float(purchase.amount) > 0 else 0,
+                    
+                    # MobileVendor principal
+                    'main_mobile_vendor': main_vendor,
+                    'main_vendor_ratio': round(main_vendor_ratio, 2),
+                    
+                    # Informations géographiques
+                    'latitude': purchase.latitude,
+                    'longitude': purchase.longitude
+                }
+                
+                purchase_stats.append(purchase_data)
+            
+            # Trier par montant total des ventes (descendant)
+            sort_by = request.GET.get('sort_by', 'total_sales_amount')
+            reverse = request.GET.get('sort_order', 'desc') == 'desc'
+            purchase_stats.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse)
+            
+            # Limiter aux top N si spécifié
+            limit = request.GET.get('limit')
+            if limit and limit.isdigit():
+                purchase_stats = purchase_stats[:int(limit)]
+            
+            return Response(purchase_stats)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors du calcul des stats des purchases: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def top_purchases_by_vendor(self, request):
+        """Statistiques des Purchases groupés par MobileVendor principal"""
+        try:
+            serializer = FilterSerializer(data=request.GET)
+            serializer.is_valid(raise_exception=True)
+            filters = serializer.validated_data
+            
+            # Récupérer tous les MobileVendors avec leurs purchases
+            vendors_qs = MobileVendor.objects.all()
+            if filters.get('point_of_sale'):
+                vendors_qs = vendors_qs.filter(point_of_sale_id__in=filters['point_of_sale'])
+            
+            vendor_purchase_stats = []
+            
+            for vendor in vendors_qs:
+                # Récupérer les purchases de ce vendeur
+                purchases_qs = Purchase.objects.filter(vendor=vendor)
+                purchases_qs = self._apply_filters(purchases_qs, filters)
+                
+                # Calculer les statistiques agrégées pour ce vendeur
+                vendor_purchases_agg = purchases_qs.aggregate(
+                    total_purchase_amount=Coalesce(
+                        Sum('amount'), 
+                        0, 
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    ),
+                    total_purchase_count=Count('id')
+                )
+                
+                total_purchase_amount = vendor_purchases_agg['total_purchase_amount'] or 0
+                total_purchase_count = vendor_purchases_agg['total_purchase_count'] or 0
+                
+                # Calculer les ventes totales générées par ces purchases
+                # Utiliser une agrégation directe pour éviter les boucles
+                purchase_ids = purchases_qs.values_list('id', flat=True)
+                vendor_sales_agg = Sale.objects.filter(
+                    customer_id__in=purchase_ids
+                ).aggregate(
+                    total_sales_amount=Coalesce(
+                        Sum('total_amount'),
+                        0,
+                        output_field=DecimalField(max_digits=15, decimal_places=2)
+                    ),
+                    total_sales_count=Count('id')
+                )
+                
+                vendor_sales_amount = vendor_sales_agg['total_sales_amount'] or 0
+                vendor_sales_count = vendor_sales_agg['total_sales_count'] or 0
+                
+                # Calculer l'efficacité de transformation purchase -> sales
+                efficiency = 0
+                if float(total_purchase_amount) > 0:
+                    efficiency = (float(vendor_sales_amount) / float(total_purchase_amount)) * 100
+                
+                # Récupérer les top purchases de ce vendeur avec leurs ventes
+                top_purchases_data = []
+                for purchase in purchases_qs[:5]:  # Top 5 purchases
+                    purchase_sales_agg = Sale.objects.filter(customer=purchase).aggregate(
+                        sales_amount=Coalesce(
+                            Sum('total_amount'),
+                            0,
+                            output_field=DecimalField(max_digits=15, decimal_places=2)
+                        )
+                    )
+                    
+                    sales_amount = purchase_sales_agg['sales_amount'] or 0
+                    purchase_efficiency = 0
+                    if float(purchase.amount) > 0:
+                        purchase_efficiency = (float(sales_amount) / float(purchase.amount)) * 100
+                    
+                    top_purchases_data.append({
+                        'id': purchase.id,
+                        'full_name': purchase.full_name,
+                        'zone': purchase.zone,
+                        'purchase_amount': float(purchase.amount),
+                        'sales_amount': float(sales_amount),
+                        'efficiency': round(purchase_efficiency, 2)
+                    })
+                
+                # Trier les top purchases par montant des ventes
+                top_purchases_data.sort(key=lambda x: x['sales_amount'], reverse=True)
+                
+                vendor_data = {
+                    'vendor_id': vendor.id,
+                    'vendor_full_name': vendor.full_name,
+                    'vendor_phone': vendor.phone,
+                    'vendor_status': vendor.status,
+                    'point_of_sale': vendor.point_of_sale.name,
+                    
+                    # Statistiques des purchases
+                    'total_purchase_amount': float(total_purchase_amount),
+                    'total_purchase_count': total_purchase_count,
+                    'average_purchase_value': round(float(total_purchase_amount) / total_purchase_count, 2) if total_purchase_count > 0 else 0,
+                    
+                    # Statistiques des ventes générées
+                    'total_sales_from_purchases': float(vendor_sales_amount),
+                    'total_sales_count': vendor_sales_count,
+                    'purchase_to_sales_efficiency': round(efficiency, 2),
+                    
+                    # Top purchases
+                    'top_purchases': top_purchases_data
+                }
+                
+                vendor_purchase_stats.append(vendor_data)
+            
+            # Trier par efficacité ou montant total des ventes
+            sort_by = request.GET.get('sort_by', 'total_sales_from_purchases')
+            reverse = request.GET.get('sort_order', 'desc') == 'desc'
+            vendor_purchase_stats.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse)
+            
+            return Response(vendor_purchase_stats)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Erreur lors du calcul des stats purchases par vendeur: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

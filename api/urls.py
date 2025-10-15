@@ -138,6 +138,9 @@ urlpatterns = [
     path('statistics/sales_timeseries/', StatisticsViewSet.as_view({'get': 'sales_timeseries'})),
     path('statistics/performance_metrics/', StatisticsViewSet.as_view({'get': 'performance_metrics'})),
 
+    path('statistics/purchase/', StatisticsViewSet.as_view({'get': 'top_purchases_stats'})),
+    path('statistics/top_purchase/', StatisticsViewSet.as_view({'get': 'top_purchases_by_vendor'})),
+
         # Nouvelles URLs pour graphiques et exports
     path('statistics/sales_chart/', StatisticsViewSet.as_view({'get': 'sales_chart'})),
     path('statistics/performance_chart/', StatisticsViewSet.as_view({'get': 'performance_chart'})),
@@ -147,17 +150,3 @@ urlpatterns = [
 
     path('', include(router.urls)),
 ]
-
-
-    # Performance d'un vendeur spécifique
-    # GET /api/vendors/{id}/performance/?days=30
-    # GET /api/vendors/{id}/performance/?start_date=2024-01-01&end_date=2024-01-31
-    
-    # Classement de tous les vendeurs
-    # GET /api/vendors/ranking/?days=30
-    
-    # Mise à jour de la performance
-    # POST /api/vendors/{id}/update_performance/
-    
-    # Historique des ventes
-    # GET /api/vendors/{id}/sales_history/?days=30
