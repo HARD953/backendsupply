@@ -16,7 +16,6 @@ from .views import (
     DashboardView, StockOverviewView,
     ProductFormatListCreateView,ProductFormatDetailView, SaleViewSet,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
-
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet,PurchaseViewSetData
 
