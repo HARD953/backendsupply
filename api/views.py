@@ -25,6 +25,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 
+#SaleViewSet
 
 # Views existantes (inchangées sauf indication)
 class CategoryListCreateView(generics.ListCreateAPIView):
@@ -1264,7 +1265,9 @@ class SaleViewSet(viewsets.ModelViewSet):
         """
         Retourne uniquement les ventes de l'utilisateur connecté
         """
-        return Sale.objects.filter(vendor=self.request.user.id)
+        #return Sale.objects.filter(vendor=self.request.user.mobile_vendor)
+        
+        return Sale.objects.all()
 
     def perform_create(self, serializer):
         """

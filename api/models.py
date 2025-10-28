@@ -1051,63 +1051,63 @@ class VendorActivity(models.Model):
         return f"{self.vendor.full_name} - {order_id} - {self.get_activity_type_display()} - {self.created_at.date()}"
 
 
-class Sale(models.Model):
-    """
-    Modèle pour enregistrer les ventes
-    """
-    vendor_activity = models.ForeignKey(
-        'VendorActivity', 
-        on_delete=models.CASCADE,
-        related_name='sales'
-    )
-    quantity = models.PositiveIntegerField()
-    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    customer_name = models.CharField(max_length=100, blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(blank=True, null=True)
-    latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
-    longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
+# class Sale(models.Model):
+#     """
+#     Modèle pour enregistrer les ventes
+#     """
+#     vendor_activity = models.ForeignKey(
+#         'VendorActivity', 
+#         on_delete=models.CASCADE,
+#         related_name='sales'
+#     )
+#     quantity = models.PositiveIntegerField()
+#     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+#     customer_name = models.CharField(max_length=100, blank=True, null=True)
+#     timestamp = models.DateTimeField(auto_now_add=True)
+#     notes = models.TextField(blank=True, null=True)
+#     latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
+#     longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
     
-    class Meta:
-        verbose_name = "Vente"
-        verbose_name_plural = "Ventes"
-        ordering = ['-timestamp']
+#     class Meta:
+#         verbose_name = "Vente"
+#         verbose_name_plural = "Ventes"
+#         ordering = ['-timestamp']
     
-    def clean(self):
-        """Validation avant sauvegarde"""
-        super().clean()
+#     def clean(self):
+#         """Validation avant sauvegarde"""
+#         super().clean()
         
-        if self.quantity <= 0:
-            raise ValidationError("La quantité doit être positive")
+#         if self.quantity <= 0:
+#             raise ValidationError("La quantité doit être positive")
         
-        if not self.vendor_activity:
-            raise ValidationError("Une activité de vendeur est requise")
+#         if not self.vendor_activity:
+#             raise ValidationError("Une activité de vendeur est requise")
     
-    def save(self, *args, **kwargs):
-        """
-        Surcharge de save() pour gérer automatiquement les ventes
-        """
-        # Validation
-        self.clean()
+#     def save(self, *args, **kwargs):
+#         """
+#         Surcharge de save() pour gérer automatiquement les ventes
+#         """
+#         # Validation
+#         self.clean()
         
-        # Si c'est une nouvelle vente
-        if self._state.adding:
-            print(f"💰 Création nouvelle vente: {self.quantity} unités")
+#         # Si c'est une nouvelle vente
+#         if self._state.adding:
+#             print(f"💰 Création nouvelle vente: {self.quantity} unités")
             
-            # Utiliser la méthode atomique pour effectuer la vente
-            try:
-                self.vendor_activity.vendre_avec_verrouillage(self.quantity)
-                print(f"✅ Stock mis à jour avec succès")
-            except ValidationError as e:
-                print(f"❌ Erreur lors de la vente: {e}")
-                raise e
+#             # Utiliser la méthode atomique pour effectuer la vente
+#             try:
+#                 self.vendor_activity.vendre_avec_verrouillage(self.quantity)
+#                 print(f"✅ Stock mis à jour avec succès")
+#             except ValidationError as e:
+#                 print(f"❌ Erreur lors de la vente: {e}")
+#                 raise e
         
-        # Sauvegarder la vente
-        super().save(*args, **kwargs)
-        print(f"💾 Vente sauvegardée: ID={self.id}")
+#         # Sauvegarder la vente
+#         super().save(*args, **kwargs)
+#         print(f"💾 Vente sauvegardée: ID={self.id}")
     
-    def __str__(self):
-        return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name} - {self.created_at.date()}"
+#     def __str__(self):
+#         return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name} - {self.created_at.date()}"
     
 class VendorPerformance(models.Model):
     """
