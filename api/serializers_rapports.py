@@ -72,7 +72,7 @@ class SaleDetailSerializer(serializers.ModelSerializer):
         model = Sale
         fields = [
             'id', 'product_variant', 'quantity', 'total_amount',
-            'unit_price', 'created_at', 'vendor'
+            'unit_price', 'created_at', 'vendor','latitude','longitude'
         ]
     
     def get_unit_price(self, obj):
