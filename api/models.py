@@ -78,6 +78,9 @@ class PointOfSale(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    brander = models.BooleanField(default=False, verbose_name="Est brandé")
+    marque_brander = models.CharField(max_length=200, blank=True, null=True, verbose_name="Marque du brander")
+
     def __str__(self):
         return f"{self.name} ({self.commune})"
 
