@@ -71,7 +71,7 @@ urlpatterns = [
     
     # Rôles
     path('roles/', RoleListCreateView.as_view(), name='role-list-create'),
-    path('roles/<int:id>/', RoleDetailView.as_view(), name='role-detail'),
+    path('roles/<int:pk>/', RoleDetailView.as_view(), name='role-detail'),
     
     # # Utilisateurs
     # path('users/', UserProfileListCreateView.as_view(), name='user-list-create'),
