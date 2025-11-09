@@ -112,6 +112,16 @@ class Role(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
     color = models.CharField(max_length=100, blank=True, null=True)
+    tableau = models.BooleanField(default=False, verbose_name="Tableau de bord")
+    distributeurs = models.BooleanField(default=False, verbose_name="Distributeurs")
+    commerciaux = models.BooleanField(default=False, verbose_name="Commerciaux")
+    prospects = models.BooleanField(default=False, verbose_name="Prospects")
+    inventaire = models.BooleanField(default=False, verbose_name="Inventaire")
+    commande = models.BooleanField(default=False, verbose_name="Commandes")
+    utilisateur = models.BooleanField(default=False, verbose_name="Utilisateurs")
+    analytique = models.BooleanField(default=False, verbose_name="Analytiques")
+    geolocalisation = models.BooleanField(default=False, verbose_name="Geolocalisations")
+    configuration = models.BooleanField(default=False, verbose_name="Configurations")
     permissions = models.ManyToManyField(Permission, related_name='roles')
 
     def __str__(self):
