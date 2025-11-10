@@ -225,116 +225,116 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
         model = PointOfSale
         fields = ['id', 'name', 'phone', 'email', 'address', 'type', 'registration_date']
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    user = UserCreateSerializer(required=True)
-    # points_of_sale_name = PointOfSaleSerializer(many=True, read_only=True)  # Pour la lecture
-    role_name = serializers.CharField(source='role.name', read_only=True)
-    point_of_sale_name = serializers.CharField(source='point_of_sale.name', read_only=True)
+# class UserProfileSerializer(serializers.ModelSerializer):
+#     user = UserCreateSerializer(required=True)
+#     # points_of_sale_name = PointOfSaleSerializer(many=True, read_only=True)  # Pour la lecture
+#     role_name = serializers.CharField(source='role.name', read_only=True)
+#     point_of_sale_name = serializers.CharField(source='point_of_sale.name', read_only=True)
     
-    # Champs pour l'écriture - UTILISEZ LE MÊME NOM QUE LE MODÈLE
-    points_of_sale = serializers.PrimaryKeyRelatedField(  # ← Même nom que le champ ManyToMany
-        queryset=PointOfSale.objects.all(),
-        many=True,
-        required=False,
-        write_only=False  # ← Changez à False pour permettre lecture et écriture
-    )
-    role_id = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(), 
-        source='role', 
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
+#     # Champs pour l'écriture - UTILISEZ LE MÊME NOM QUE LE MODÈLE
+#     points_of_sale = serializers.PrimaryKeyRelatedField(  # ← Même nom que le champ ManyToMany
+#         queryset=PointOfSale.objects.all(),
+#         many=True,
+#         required=False,
+#         write_only=False  # ← Changez à False pour permettre lecture et écriture
+#     )
+#     role_id = serializers.PrimaryKeyRelatedField(
+#         queryset=Role.objects.all(), 
+#         source='role', 
+#         write_only=True,
+#         required=False,
+#         allow_null=True
+#     )
 
-    class Meta:
-        model = UserProfile
-        fields = [
-            'id', 'user', 'phone', 'location', 'role', 'join_date',
-            'last_login', 'status', 'avatar', 'points_of_sale',
-            'establishment_name', 'establishment_phone', 'establishment_email','point_of_sale_name',
-            'establishment_address', 'establishment_type', 'establishment_registration_date',
-            'owner',
-            # Champs supplémentaires
-            'role_name',
-            # Champs write-only
-            'role_id'
-        ]
-        read_only_fields = ['join_date', 'last_login', 'owner']
+#     class Meta:
+#         model = UserProfile
+#         fields = [
+#             'id', 'user', 'phone', 'location', 'role', 'join_date',
+#             'last_login', 'status', 'avatar', 'points_of_sale',
+#             'establishment_name', 'establishment_phone', 'establishment_email','point_of_sale_name',
+#             'establishment_address', 'establishment_type', 'establishment_registration_date',
+#             'owner',
+#             # Champs supplémentaires
+#             'role_name',
+#             # Champs write-only
+#             'role_id'
+#         ]
+#         read_only_fields = ['join_date', 'last_login', 'owner']
 
-    def create(self, validated_data):
-        # Extraire les données de l'utilisateur
-        user_data = validated_data.pop('user')
+#     def create(self, validated_data):
+#         # Extraire les données de l'utilisateur
+#         user_data = validated_data.pop('user')
         
-        # Vérifier que l'username n'existe pas déjà
-        if User.objects.filter(username=user_data['username']).exists():
-            raise serializers.ValidationError({"username": "Cet username existe déjà."})
+#         # Vérifier que l'username n'existe pas déjà
+#         if User.objects.filter(username=user_data['username']).exists():
+#             raise serializers.ValidationError({"username": "Cet username existe déjà."})
         
-        # Vérifier que l'email n'existe pas déjà
-        if User.objects.filter(email=user_data['email']).exists():
-            raise serializers.ValidationError({"email": "Cet email existe déjà."})
+#         # Vérifier que l'email n'existe pas déjà
+#         if User.objects.filter(email=user_data['email']).exists():
+#             raise serializers.ValidationError({"email": "Cet email existe déjà."})
         
-        # Extraire les points de vente - le champ s'appelle points_of_sale
-        points_of_sale = validated_data.pop('points_of_sale', [])
+#         # Extraire les points de vente - le champ s'appelle points_of_sale
+#         points_of_sale = validated_data.pop('points_of_sale', [])
         
-        # Créer le nouvel utilisateur
-        password = user_data.pop('password')
-        user = User.objects.create(**user_data)
-        user.set_password(password)
-        user.save()
+#         # Créer le nouvel utilisateur
+#         password = user_data.pop('password')
+#         user = User.objects.create(**user_data)
+#         user.set_password(password)
+#         user.save()
         
-        # Récupérer l'owner (utilisateur connecté) depuis le contexte
-        owner = self.context['request'].user
+#         # Récupérer l'owner (utilisateur connecté) depuis le contexte
+#         owner = self.context['request'].user
         
-        # Créer le profil utilisateur avec l'owner
-        user_profile = UserProfile.objects.create(
-            user=user, 
-            owner=owner,
-            **validated_data
-        )
+#         # Créer le profil utilisateur avec l'owner
+#         user_profile = UserProfile.objects.create(
+#             user=user, 
+#             owner=owner,
+#             **validated_data
+#         )
         
-        # Ajouter les points de vente
-        if points_of_sale:
-            user_profile.points_of_sale.set(points_of_sale)
+#         # Ajouter les points de vente
+#         if points_of_sale:
+#             user_profile.points_of_sale.set(points_of_sale)
         
-        return user_profile
+#         return user_profile
 
-    def update(self, instance, validated_data):
-        # Mettre à jour les données de l'utilisateur si fournies
-        user_data = validated_data.pop('user', None)
-        if user_data:
-            user = instance.user
-            for attr, value in user_data.items():
-                if attr == 'password':
-                    user.set_password(value)
-                else:
-                    setattr(user, attr, value)
-            user.save()
+#     def update(self, instance, validated_data):
+#         # Mettre à jour les données de l'utilisateur si fournies
+#         user_data = validated_data.pop('user', None)
+#         if user_data:
+#             user = instance.user
+#             for attr, value in user_data.items():
+#                 if attr == 'password':
+#                     user.set_password(value)
+#                 else:
+#                     setattr(user, attr, value)
+#             user.save()
         
-        # Mettre à jour les points de vente
-        points_of_sale = validated_data.pop('points_of_sale', None)
+#         # Mettre à jour les points de vente
+#         points_of_sale = validated_data.pop('points_of_sale', None)
         
-        # Mettre à jour le profil
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+#         # Mettre à jour le profil
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
         
-        instance.save()
+#         instance.save()
         
-        if points_of_sale is not None:
-            instance.points_of_sale.set(points_of_sale)
+#         if points_of_sale is not None:
+#             instance.points_of_sale.set(points_of_sale)
         
-        return instance
+#         return instance
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    role = RoleSerializer(read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
+# class UserProfileSerializer(serializers.ModelSerializer):
+#     role = RoleSerializer(read_only=True)
+#     username = serializers.CharField(source='user.username', read_only=True)
+#     email = serializers.EmailField(source='user.email', read_only=True)
 
-    class Meta:
-        model = UserProfile
-        fields = [
-            'id', 'username', 'email', 'phone', 'location', 'role',
-            'join_date', 'last_login', 'status', 'avatar'
-        ]
+#     class Meta:
+#         model = UserProfile
+#         fields = [
+#             'id', 'username', 'email', 'phone', 'location', 'role',
+#             'join_date', 'last_login', 'status', 'avatar'
+#         ]
 
 class ProductFormatSerializer(serializers.ModelSerializer):
     class Meta:
