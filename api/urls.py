@@ -118,7 +118,7 @@ urlpatterns = [
     path('notifications/', NotificationListCreateView.as_view(), name='notification-list-create'),
     path('notifications/<int:id>/', NotificationDetailView.as_view(), name='notification-detail'),
 
-    # Endpoint supplémentaire pour le dashboard
+    # Endpoint supplémentaire pour le 
     path('mobile-vendors/dashboard/stats/', MobileVendorViewSet.as_view({'get': 'stats'}), name='mobile-vendors-dashboard-stats'),
 
     # Endpoint supplémentaire pour le rapports
