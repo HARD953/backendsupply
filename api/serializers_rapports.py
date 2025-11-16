@@ -104,3 +104,35 @@ class PurchaseSummarySerializer(serializers.ModelSerializer):
         if obj.sales_count > 0:
             return obj.total_sales_amount / obj.sales_count
         return 0
+    
+class PurchaseSummarySerializerPOS(serializers.ModelSerializer):
+    total_sales_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_sales_quantity = serializers.IntegerField(read_only=True)
+    sales_count = serializers.IntegerField(read_only=True)
+    total_products = serializers.IntegerField(read_only=True)
+    total_variants = serializers.IntegerField(read_only=True)
+    vendor_name = serializers.CharField(source='vendor.name', read_only=True)
+    average_sale_amount = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PointOfSale
+        # fields = [
+        #     'id', 'full_name', 'first_name', 'last_name', 'zone',
+        #     'vendor', 'vendor_name', 'purchase_date', 'base',
+        #     'pushcard_type', 'phone', 'latitude', 'longitude',
+        #     'total_sales_amount', 'total_sales_quantity', 'sales_count',
+        #     'total_products', 'total_variants', 'average_sale_amount',
+        #     'created_at'
+        # ]
+
+        fields = [
+            'id', 'name', 'owner', 'phone', 'email', 'address', 'latitude', 'longitude','total_sales_amount', 'total_sales_quantity', 'sales_count',
+            'total_products', 'total_variants', 'average_sale_amount','vendor_name',
+            'district', 'region', 'commune', 'type', 'status', 'registration_date',
+            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar','brander','marque_brander'
+        ]
+    
+    def get_average_sale_amount(self, obj):
+        if obj.sales_count > 0:
+            return obj.total_sales_amount / obj.sales_count
+        return 0

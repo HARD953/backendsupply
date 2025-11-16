@@ -13,7 +13,7 @@ from .views import (
     TokenListCreateView, TokenDetailView,
     TokenTransactionListCreateView, TokenTransactionDetailView,
     NotificationListCreateView, NotificationDetailView,
-    DashboardView, StockOverviewView,
+    DashboardView, StockOverviewView,PurchaseViewSetDataPOS,
     ProductFormatListCreateView,ProductFormatDetailView, SaleViewSet,SaleViewSetPOS,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 )
@@ -44,6 +44,7 @@ router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'salespos', SaleViewSetPOS, basename='salepos')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
+router.register(r'purchasedatapos', PurchaseViewSetDataPOS, basename='purchasespos')
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
 
 

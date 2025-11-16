@@ -1995,7 +1995,7 @@ from .models import Purchase, Sale, ProductVariant, Product
 from .serializers_rapports import (
     PurchaseSummarySerializer, 
     SaleDetailSerializer,
-    ProductVariantDetailSerializer
+    ProductVariantDetailSerializer,PurchaseSummarySerializerPOS
 )
 
 class PurchaseViewSetData(viewsets.ModelViewSet):
@@ -2081,7 +2081,91 @@ class PurchaseViewSetData(viewsets.ModelViewSet):
             'purchases': serializer.data,
             'global_statistics': global_stats
         })
+    
 
+class PurchaseViewSetDataPOS(viewsets.ModelViewSet):
+    """
+    ViewSet pour gérer les achats avec statistiques des ventes
+    """
+    queryset = PointOfSale.objects.all()
+    serializer_class = PurchaseSummarySerializerPOS
+
+    def get_queryset(self):
+        """
+        Retourne les purchases avec les statistiques agrégées des sales
+        """
+        queryset = PointOfSale.objects.annotate(
+            total_sales_amount=Sum('purchasespos__total_amount', default=0),
+            total_sales_quantity=Sum('purchasespos__quantity', default=0),
+            sales_count=Count('purchasespos'),
+            # Nouveaux champs calculés
+            total_products=Count('purchasespos__product_variant', distinct=True),
+            total_variants=Count('purchasespos__product_variant', distinct=False)
+        ).select_related('user').prefetch_related(  # Changé 'vendor' en 'user'
+            'purchasespos__product_variant__product',
+            'purchasespos__product_variant__format'
+        )
+        
+        return queryset
+
+    @action(detail=True, methods=['get'])
+    def sales_details(self, request, pk=None):
+        """
+        Retourne toutes les sales pour un purchase spécifique
+        avec détails complets des produits
+        """
+        purchase = self.get_object()
+        sales = SalePOS.objects.filter(customer=purchase).select_related(
+            'product_variant__product',
+            'product_variant__format',
+            'vendor'
+        )
+        
+        serializer = SaleDetailSerializer(sales, many=True)
+        
+        # Statistiques détaillées
+        total_stats = sales.aggregate(
+            grand_total_amount=Sum('total_amount'),
+            grand_total_quantity=Sum('quantity'),
+            total_products=Count('product_variant__product', distinct=True),
+            total_variants=Count('product_variant', distinct=True),
+            average_price=Avg(F('total_amount') / F('quantity'))
+        )
+        
+        return Response({
+            'purchase': {
+                'id': purchase.id,
+                'full_name': purchase.name,
+                'zone': purchase.address,
+                'vendor': purchase.user.first_name if purchase.user else None  # Changé ici aussi
+            },
+            'sales': serializer.data,
+            'statistics': total_stats
+        })
+
+    @action(detail=False, methods=['get'])
+    def sales_summary(self, request):
+        """
+        Retourne un résumé de toutes les ventes groupées par purchase
+        """
+        purchases = self.get_queryset()
+        
+        # Agrégation globale avec détails produits
+        global_stats = SalePOS.objects.aggregate(
+            overall_total_amount=Sum('total_amount'),
+            overall_total_quantity=Sum('quantity'),
+            total_purchases=Count('customer', distinct=True),
+            total_products_sold=Count('product_variant__product', distinct=True),
+            total_variants_sold=Count('product_variant', distinct=True)
+        )
+        
+        serializer = self.get_serializer(purchases, many=True)
+        
+        return Response({
+            'purchases': serializer.data,
+            'global_statistics': global_stats
+        })
+    
 class SaleViewSetPOS(viewsets.ModelViewSet):
     serializer_class = SaleSerializerPOS
     permission_classes = [IsAuthenticated]
