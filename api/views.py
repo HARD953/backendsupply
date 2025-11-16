@@ -2247,8 +2247,10 @@ class SaleViewSetPOS(viewsets.ModelViewSet):
             .order_by('-total_quantity')[:5]
         )
 
+        vendorID = self.request.user.id
+
         # CORRECTION: Utiliser l'objet vendor au lieu de vendor_id pour les filtres
-        purchases = PointOfSale.objects.filter(user=vendor)
+        purchases = PointOfSale.objects.filter(user=vendorID)
         sales = SalePOS.objects.filter(vendor=vendor)
         purchase_count = purchases.count()
         sales_count = sales.count()  # On peut réutiliser le queryset existant
