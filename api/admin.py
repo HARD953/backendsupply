@@ -20,6 +20,7 @@ admin.site.register(ProductVariant)
 admin.site.register(ProductFormat)
 admin.site.register(Purchase)
 admin.site.register(Sale)
+admin.site.register(SalePOS)
 admin.site.register(Report)
 
 

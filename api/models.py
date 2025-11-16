@@ -1282,6 +1282,77 @@ class Sale(models.Model):
     def __str__(self):
         return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name}"
     
+class SalePOS(models.Model):
+    """
+    Modèle pour enregistrer les ventes
+    """
+    product_variant = models.ForeignKey(
+        'ProductVariant',
+        on_delete=models.CASCADE,
+        related_name='salespos'
+    )
+    customer = models.ForeignKey(
+        'PointOfSale',
+        on_delete=models.CASCADE,
+        related_name='purchasespos'
+    )
+    quantity = models.PositiveIntegerField()
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
+    longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    vendor = models.ForeignKey(
+        'MobileVendor',
+        on_delete=models.CASCADE,
+        related_name='sales_vendorspos'
+    )
+    vendor_activity = models.ForeignKey(
+        'VendorActivity', 
+        on_delete=models.CASCADE,
+        related_name='salespos'
+    )
+    
+    class Meta:
+        db_table = 'salespos'
+        ordering = ['-created_at']
+    
+    def clean(self):
+        """Validation avant sauvegarde"""
+        super().clean()
+        
+        if self.quantity <= 0:
+            raise ValidationError("La quantité doit être positive")
+        
+        if not self.vendor_activity:
+            raise ValidationError("Une activité de vendeur est requise")
+    
+    def save(self, *args, **kwargs):
+        """
+        Surcharge de save() pour gérer automatiquement les ventes
+        """
+        # Validation
+        self.clean()
+        
+        # Si c'est une nouvelle vente
+        if self._state.adding:
+            print(f"💰 Création nouvelle vente: {self.quantity} unités")
+            
+            # Utiliser la méthode atomique pour effectuer la vente
+            try:
+                self.vendor_activity.vendre_avec_verrouillage(self.quantity)
+                print(f"✅ Stock mis à jour avec succès")
+            except ValidationError as e:
+                print(f"❌ Erreur lors de la vente: {e}")
+                raise e
+        
+        # Sauvegarder la vente
+        super().save(*args, **kwargs)
+        print(f"💾 Vente sauvegardée: ID={self.id}")
+    
+    def __str__(self):
+        return f"Vente {self.quantity} unités - {self.vendor_activity.vendor.full_name}"
+    
 
 # models.py - Ajoutez cette classe
 class Report(models.Model):

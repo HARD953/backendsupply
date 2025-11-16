@@ -947,7 +947,108 @@ class SaleSerializer(serializers.ModelSerializer):
             instance.save()
             return instance
 
+# serializers.py
+from .models import Sale
+from django.db import transaction
 
+class SaleSerializer(serializers.ModelSerializer):
+    product_variant_name = serializers.CharField(source='product_variant.product.name', read_only=True)
+    format = serializers.CharField(source='product_variant.format.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.full_name', read_only=True)
+    vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
+    
+    class Meta:
+        model = Sale
+        fields = [
+            'id', 
+            'product_variant', 
+            'customer', 
+            'quantity', 
+            'total_amount',
+            'created_at',
+            'updated_at',
+            'vendor',
+            'product_variant_name',
+            'format',
+            'customer_name',
+            'vendor_name',
+            'vendor_activity',
+            'latitude',
+            'longitude'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'vendor']
+
+    def create(self, validated_data):
+        """
+        Création d'une vente avec gestion atomique
+        Le signal pre_save gérera automatiquement la mise à jour des quantités
+        """
+        with transaction.atomic():
+            # Le signal pre_save s'occupera de tout
+            sale = Sale.objects.create(**validated_data)
+            return sale
+    
+    def update(self, instance, validated_data):
+        """
+        Mise à jour d'une vente avec gestion atomique
+        """
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            return instance
+
+# serializers.py
+from .models import Sale,SalePOS
+from django.db import transaction
+
+class SaleSerializerPOS(serializers.ModelSerializer):
+    product_variant_name = serializers.CharField(source='product_variant.product.name', read_only=True)
+    format = serializers.CharField(source='product_variant.format.name', read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    vendor_name = serializers.CharField(source='vendor.full_name', read_only=True)
+    
+    class Meta:
+        model = SalePOS
+        fields = [
+            'id', 
+            'product_variant', 
+            'customer', 
+            'quantity', 
+            'total_amount',
+            'created_at',
+            'updated_at',
+            'vendor',
+            'product_variant_name',
+            'format',
+            'customer_name',
+            'vendor_name',
+            'vendor_activity',
+            'latitude',
+            'longitude'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'vendor']
+
+    def create(self, validated_data):
+        """
+        Création d'une vente avec gestion atomique
+        Le signal pre_save gérera automatiquement la mise à jour des quantités
+        """
+        with transaction.atomic():
+            # Le signal pre_save s'occupera de tout
+            sale = SalePOS.objects.create(**validated_data)
+            return sale
+    
+    def update(self, instance, validated_data):
+        """
+        Mise à jour d'une vente avec gestion atomique
+        """
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            return instance
+        
 class PointOfSaleSerializers(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True, default=serializers.CurrentUserDefault())
     orders_summary = serializers.DictField()

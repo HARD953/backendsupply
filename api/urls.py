@@ -14,7 +14,7 @@ from .views import (
     TokenTransactionListCreateView, TokenTransactionDetailView,
     NotificationListCreateView, NotificationDetailView,
     DashboardView, StockOverviewView,
-    ProductFormatListCreateView,ProductFormatDetailView, SaleViewSet,
+    ProductFormatListCreateView,ProductFormatDetailView, SaleViewSet,SaleViewSetPOS,
     ProductVariantListCreateView, ProductVariantDetailView  # Nouveaux endpoints ajoutés
 )
 from .views import MobileVendorViewSet, VendorActivityViewSet, VendorPerformanceViewSet, PurchaseViewSet,VendorActivitySummaryViewSet,PurchaseViewSetData
@@ -41,6 +41,7 @@ router.register(r'vendor-performances', VendorPerformanceViewSet, basename='vend
 router.register(r'purchases', PurchaseViewSet, basename='purchase')
 router.register(r'vendor-activities-summary', VendorActivitySummaryViewSet, basename='vendor-activity-summary')
 router.register(r'sales', SaleViewSet, basename='sale')
+router.register(r'salespos', SaleViewSetPOS, basename='salepos')
 router.register(r'users', UserProfileViewSet)
 router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
