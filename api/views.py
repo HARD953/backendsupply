@@ -2562,3 +2562,47 @@ class SaleViewSetPOS(viewsets.ModelViewSet):
         
         growth_rate = ((last_month - first_month) / first_month) * 100
         return float(growth_rate)
+    
+
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter
+from .models import District, Ville, Quartier
+from .serializers import DistrictSerializer, VilleSerializer, QuartierSerializer
+
+class DistrictViewSet(viewsets.ModelViewSet):
+    queryset = District.objects.all()
+    serializer_class = DistrictSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    search_fields = ['nom']
+    
+    @action(detail=True, methods=['get'])
+    def villes(self, request, pk=None):
+        district = self.get_object()
+        villes = Ville.objects.filter(district=district)
+        serializer = VilleSerializer(villes, many=True)
+        return Response(serializer.data)
+
+class VilleViewSet(viewsets.ModelViewSet):
+    queryset = Ville.objects.all()
+    serializer_class = VilleSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['district']
+    search_fields = ['nom']
+    
+    @action(detail=True, methods=['get'])
+    def quartiers(self, request, pk=None):
+        ville = self.get_object()
+        quartiers = Quartier.objects.filter(ville=ville)
+        serializer = QuartierSerializer(quartiers, many=True)
+        return Response(serializer.data)
+
+class QuartierViewSet(viewsets.ModelViewSet):
+    queryset = Quartier.objects.all()
+    serializer_class = QuartierSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['ville']
+    search_fields = ['nom']

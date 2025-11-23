@@ -1069,3 +1069,34 @@ class PurchaseSerializer1(serializers.ModelSerializer):
     class Meta:
         model = Purchase
         fields = '__all__'
+
+from .models import District, Ville, Quartier
+
+class QuartierSerializer(serializers.ModelSerializer):
+    ville_nom = serializers.CharField(source='ville.nom', read_only=True)
+    district_nom = serializers.CharField(source='ville.district.nom', read_only=True)
+    
+    class Meta:
+        model = Quartier
+        fields = ['id', 'nom', 'ville', 'ville_nom', 'district_nom', 'date_creation']
+
+class VilleSerializer(serializers.ModelSerializer):
+    district_nom = serializers.CharField(source='district.nom', read_only=True)
+    quartiers_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Ville
+        fields = ['id', 'nom', 'district', 'district_nom', 'quartiers_count', 'date_creation']
+    
+    def get_quartiers_count(self, obj):
+        return obj.quartiers.count()
+
+class DistrictSerializer(serializers.ModelSerializer):
+    villes_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = District
+        fields = ['id', 'nom', 'villes_count', 'date_creation']
+    
+    def get_villes_count(self, obj):
+        return obj.villes.count()

@@ -47,6 +47,10 @@ router.register(r'purchasedata', PurchaseViewSetData, basename='purchases')
 router.register(r'purchasedatapos', PurchaseViewSetDataPOS, basename='purchasespos')
 router.register(r'statistics', StatisticsViewSet, basename='statistics')
 
+router.register(r'districts', views.DistrictViewSet)
+router.register(r'villes', views.VilleViewSet)
+router.register(r'quartiers', views.QuartierViewSet)
+
 
 urlpatterns = [
     # Dashboard

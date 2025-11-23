@@ -1415,3 +1415,38 @@ class Report(models.Model):
             else:
                 return f"{size / (1024 * 1024):.1f} MB"
         return "0 KB"
+    
+
+class District(models.Model):
+    nom = models.CharField(max_length=100, unique=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['nom']
+    
+    def __str__(self):
+        return self.nom
+
+class Ville(models.Model):
+    nom = models.CharField(max_length=100)
+    district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='villes')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['nom']
+        unique_together = ['nom', 'district']
+    
+    def __str__(self):
+        return f"{self.nom} - {self.district.nom}"
+
+class Quartier(models.Model):
+    nom = models.CharField(max_length=100)
+    ville = models.ForeignKey(Ville, on_delete=models.CASCADE, related_name='quartiers')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['nom']
+        unique_together = ['nom', 'ville']
+    
+    def __str__(self):
+        return f"{self.nom} - {self.ville.nom}"
