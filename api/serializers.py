@@ -27,7 +27,7 @@ class PointOfSaleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'owner', 'phone', 'email', 'address', 'latitude', 'longitude',
             'district', 'region', 'commune', 'type', 'status', 'registration_date',
-            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar','brander','marque_brander'
+            'turnover', 'monthly_orders', 'evaluation_score', 'created_at', 'updated_at', 'user','avatar','brander','marque_brander','branding_image'
         ]
 
 
