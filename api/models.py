@@ -117,6 +117,7 @@ class Role(models.Model):
     distributeurs = models.BooleanField(default=False, verbose_name="Distributeurs")
     commerciaux = models.BooleanField(default=False, verbose_name="Commerciaux")
     prospects = models.BooleanField(default=False, verbose_name="Prospects")
+    positions = models.BooleanField(default=False, verbose_name="Positions")
     inventaire = models.BooleanField(default=False, verbose_name="Inventaire")
     commande = models.BooleanField(default=False, verbose_name="Commandes")
     utilisateur = models.BooleanField(default=False, verbose_name="Utilisateurs")

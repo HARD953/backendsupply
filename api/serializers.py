@@ -42,7 +42,7 @@ class RoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Role
-        fields = ['id', 'name', 'description','color', 'permissions', 'users','tableau','distributeurs','commerciaux','prospects','inventaire','commande','utilisateur','analytique','geolocalisation','configuration']
+        fields = ['id', 'name', 'description','color', 'permissions', 'users','tableau','distributeurs','commerciaux','prospects','inventaire','commande','utilisateur','analytique','geolocalisation','configuration','positions']
         
 from django.contrib.auth.hashers import make_password
 
