@@ -22,6 +22,9 @@ admin.site.register(Purchase)
 admin.site.register(Sale)
 admin.site.register(SalePOS)
 admin.site.register(Report)
+admin.site.register(District)
+admin.site.register(Ville)
+admin.site.register(Quartier)
 
 
 

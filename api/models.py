@@ -118,6 +118,8 @@ class Role(models.Model):
     commerciaux = models.BooleanField(default=False, verbose_name="Commerciaux")
     prospects = models.BooleanField(default=False, verbose_name="Prospects")
     positions = models.BooleanField(default=False, verbose_name="Positions")
+    createcommande = models.BooleanField(default=False, verbose_name="Createcommande")
+    vuecommande = models.BooleanField(default=False, verbose_name="Vuecommande")
     inventaire = models.BooleanField(default=False, verbose_name="Inventaire")
     commande = models.BooleanField(default=False, verbose_name="Commandes")
     utilisateur = models.BooleanField(default=False, verbose_name="Utilisateurs")
@@ -623,6 +625,8 @@ class MobileVendor(models.Model):
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
     
     class Meta:
         verbose_name = "Vendeur ambulant"
@@ -1182,7 +1186,7 @@ class Purchase(models.Model):
     pushcard_type = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard")
     latitude = models.FloatField(blank=True, null=True, verbose_name="Latitude")
     longitude = models.FloatField(blank=True, null=True, verbose_name="Longitude")
-    phone = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard")
+    phone = models.CharField(max_length=100, blank=True, verbose_name="Type de pushcard",unique=True)
 
     class Meta:
         verbose_name = "Achat"
