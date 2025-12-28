@@ -619,7 +619,8 @@ class MobileVendor(models.Model):
     zones = models.JSONField(default=list)  # Zones de vente sous forme de liste
     performance = models.FloatField(default=0.0)  # Performance en pourcentage
     average_daily_sales = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    date_joined = models.DateField(default=timezone.now)
+    # date_joined = models.DateField(default=timezone.now)
+    date_joined = models.DateTimeField(default=timezone.now)  # Changed from DateField
     last_activity = models.DateTimeField(blank=True, null=True)
     is_approved = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)

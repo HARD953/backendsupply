@@ -25,6 +25,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 
+
 #SaleViewSet
 
 # Views existantes (inchangées sauf indication)
