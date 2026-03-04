@@ -101,10 +101,10 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'backup_m3b0',
-#         'USER': 'backup_m3b0_user',
-#         'PASSWORD': 'k9PRjogyTz9yeqVbaihol9oXxqh3qEYk',
-#         'HOST': 'dpg-d6j0btjh46gs73fo9e1g-a',  # ou l'adresse de votre serveur
+#         'NAME': 'lanfia_db',
+#         'USER': 'lanfia_user',
+#         'PASSWORD': 'papich@u0859',
+#         'HOST': '185.98.139.209',  # ou l'adresse de votre serveur
 #         'PORT': 5432,  # port par défaut de PostgreSQL
 #     }
 # }

@@ -94,7 +94,8 @@ class PointOfSaleListCreateView(generics.ListCreateAPIView):
         if self.request.user.is_authenticated:
             try:
                 # Récupère les points de vente via la relation ManyToMany du UserProfile
-                return self.request.user.profile.points_of_sale.all()
+                #return self.request.user.profile.points_of_sale.all()
+                return PointOfSale.objects.all()
             except UserProfile.DoesNotExist:
                 # Si l'utilisateur n'a pas de profil, retourne un queryset vide
                 return PointOfSale.objects.none()
@@ -1919,9 +1920,7 @@ def get_point_of_sale_orders_simple(request):
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else timezone.now().date()
         
         # Récupérer les points de vente de l'utilisateur avec les statistiques de commandes
-        points_of_sale = PointOfSale.objects.filter(
-            user=user
-        ).prefetch_related(
+        points_of_sale = PointOfSale.objects.all().prefetch_related(
             'orders__items'
         ).annotate(
             total_orders_count=Count('orders', filter=Q(orders__date__gte=start_date, orders__date__lte=end_date)),
