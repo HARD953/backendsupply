@@ -25,8 +25,11 @@ admin.site.register(Report)
 admin.site.register(District)
 admin.site.register(Ville)
 admin.site.register(Quartier)
-
-
+admin.site.register(Agent)
+admin.site.register(Photo)
+admin.site.register(AgentPerformance)
+admin.site.register(EvaluationHistory)
+admin.site.register(Activation)
 
 from .models import MobileVendor, VendorActivity, VendorPerformance
 

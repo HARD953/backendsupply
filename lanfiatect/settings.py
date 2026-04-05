@@ -91,28 +91,28 @@ WSGI_APPLICATION = 'lanfiatect.wsgi.application'
 # Database
 #https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
 #         'NAME': 'lanfia_db',
 #         'USER': 'lanfia_user',
-#         'PASSWORD': 'papich@u0859',
+#         'PASSWORD': '',
 #         'HOST': '185.98.139.209',  # ou l'adresse de votre serveur
 #         'PORT': 5432,  # port par défaut de PostgreSQL
 #     }
 # }
 
 
-DATABASES = {
-    'default': dj_database_url.parse('postgresql://backup_m3b0_user:k9PRjogyTz9yeqVbaihol9oXxqh3qEYk@dpg-d6j0btjh46gs73fo9e1g-a.oregon-postgres.render.com/backup_m3b0')
-}
+# DATABASES = {
+#     'default': dj_database_url.parse('postgresql://backup_m3b0_user:k9PRjogyTz9yeqVbaihol9oXxqh3qEYk@dpg-d6j0btjh46gs73fo9e1g-a.oregon-postgres.render.com/backup_m3b0')
+# }
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 

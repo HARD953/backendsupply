@@ -28,7 +28,12 @@ from .views_rapports import (
 from .views import UserProfileViewSet
 from .views_per import VendorViewSet
 from .views1 import StatisticsViewSet
-
+from .viewss import (
+    PointOfSaleViewSet, AgentViewSet, FilterOptionsViewSet,
+    DashboardStatsView, StatsByCommuneView, BrandingVsPotentialView,
+    RadarDataView, DailyTrendView, ScatterMatrixView,
+    TopOpportunitiesView, AgentsPerformanceView
+)
 from . import views
 from . import views4
 
@@ -50,6 +55,10 @@ router.register(r'statistics', StatisticsViewSet, basename='statistics')
 router.register(r'districts', views.DistrictViewSet)
 router.register(r'villes', views.VilleViewSet)
 router.register(r'quartiers', views.QuartierViewSet)
+
+router.register(r'points-of-sale', PointOfSaleViewSet, basename='pointofsale')
+router.register(r'agents', AgentViewSet, basename='agent')
+router.register(r'filters', FilterOptionsViewSet, basename='filter')
 
 
 urlpatterns = [
@@ -152,6 +161,17 @@ urlpatterns = [
     path('statistics/export_data/', StatisticsViewSet.as_view({'post': 'export_data'})),
 
     path('me/', views4.get_current_user_profile, name='user-profile'),
+
+
+        # Endpoints pour le dashboard
+    path('dashboards/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
+    path('dashboards/stats-by-commune/', StatsByCommuneView.as_view(), name='stats-by-commune'),
+    path('dashboards/branding-vs-potential/', BrandingVsPotentialView.as_view(), name='branding-vs-potential'),
+    path('dashboards/radar-data/', RadarDataView.as_view(), name='radar-data'),
+    path('dashboards/daily-trend/', DailyTrendView.as_view(), name='daily-trend'),
+    path('dashboards/scatter-matrix/', ScatterMatrixView.as_view(), name='scatter-matrix'),
+    path('dashboards/opportunities/', TopOpportunitiesView.as_view(), name='opportunities'),
+    path('dashboards/agents-performance/', AgentsPerformanceView.as_view(), name='agents-performance'),
 
     path('', include(router.urls)),
 ]
