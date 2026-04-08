@@ -1,4 +1,4 @@
-# views.py corrigé
+# views.py corrigé et complet
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,14 +11,15 @@ from .models import PointOfSale, Agent, Photo, AgentPerformance
 from .serializerss import (
     PointOfSaleListSerializer, PointOfSaleDetailSerializer, 
     PointOfSaleCreateSerializer, AgentSerializer, 
-    DashboardStatsSerializer, CommuneStatsSerializer
+    DashboardStatsSerializer, CommuneStatsSerializer, PhotoSerializer
 )
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 
 class PointOfSaleViewSet(viewsets.ModelViewSet):
     """ViewSet pour les points de vente"""
-    queryset = PointOfSale.objects.all()
+    queryset = PointOfSale.objects.prefetch_related('photos').all()
     permission_classes = [IsAuthenticated]
     
     def get_serializer_class(self):
@@ -50,6 +51,12 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(agent_id=agent_id)
         
         return queryset
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Récupère un point de vente avec ses photos"""
+        instance = self.get_object()
+        serializer = PointOfSaleDetailSerializer(instance)
+        return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
@@ -99,7 +106,6 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
             result = queryset.aggregate(avg=Avg(field))['avg']
             return round(result) if result else 0
         except Exception:
-            # Fallback: calcul manuel pour SQLite
             values = list(queryset.values_list(field, flat=True))
             if values:
                 return round(sum(values) / len(values))
@@ -110,7 +116,6 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
         """Statistiques groupées par commune"""
         queryset = self.get_queryset()
         
-        # Récupérer toutes les communes distinctes
         communes = queryset.values_list('commune', flat=True).distinct()
         
         result = []
@@ -125,7 +130,6 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
             non_brandes = total - brandes
             premium = commune_queryset.filter(score_global__gte=85).count()
             
-            # Calcul des moyennes manuelles pour SQLite
             score_moyen = self._manual_avg(commune_queryset, 'score_global')
             visibilite_moyen = self._manual_avg(commune_queryset, 'visibilite')
             accessibilite_moyen = self._manual_avg(commune_queryset, 'accessibilite')
@@ -197,7 +201,6 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
         if not queryset.exists():
             return Response([])
         
-        # Calcul manuel des moyennes pour SQLite
         data = [
             {'axe': 'Visibilité', 'valeur': self._manual_avg(queryset, 'visibilite')},
             {'axe': 'Accessibilité', 'valeur': self._manual_avg(queryset, 'accessibilite')},
@@ -211,29 +214,25 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def daily_trend(self, request):
         """Tendance journalière de collecte"""
-        from django.db.models.functions import TruncDate
-        from django.db import connection
-        
         queryset = self.get_queryset()
         
-        # Derniers 30 jours
         thirty_days_ago = datetime.now().date() - timedelta(days=30)
         
-        # Solution pour SQLite - utiliser extra() ou filtrer en Python
-        trends = queryset.filter(
-            date_collecte__gte=thirty_days_ago
-        )
+        trends = queryset.filter(date_collecte__gte=thirty_days_ago)
         
-        # Compter manuellement par date
-        date_counts = {}
+        # Compter manuellement par date (compatible SQLite)
+        date_counts = defaultdict(int)
         for pdv in trends:
             date_str = pdv.date_collecte.strftime('%d/%m')
-            date_counts[date_str] = date_counts.get(date_str, 0) + 1
+            date_counts[date_str] += 1
         
-        # Convertir en liste triée
+        def parse_date(date_str):
+            day, month = date_str.split('/')
+            return datetime(datetime.now().year, int(month), int(day))
+        
         result = [
             {'date': date, 'total': count}
-            for date, count in sorted(date_counts.items())
+            for date, count in sorted(date_counts.items(), key=lambda x: parse_date(x[0]))
         ]
         
         return Response(result)
@@ -266,26 +265,66 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
         serializer = PointOfSaleListSerializer(queryset, many=True)
         return Response(serializer.data)
     
+    # ==================== ACTIONS POUR LES PHOTOS ====================
+    
+    @action(detail=True, methods=['get'])
+    def photos(self, request, pk=None):
+        """Récupère toutes les photos d'un point de vente"""
+        point_of_sale = self.get_object()
+        photos = point_of_sale.photos.all().order_by('order')
+        serializer = PhotoSerializer(photos, many=True)
+        return Response(serializer.data)
+    
     @action(detail=True, methods=['post'])
     def upload_photos(self, request, pk=None):
         """Upload de photos pour un PDV"""
         point_of_sale = self.get_object()
         photos = request.FILES.getlist('photos')
+        photo_types = request.data.getlist('types', [])
         
+        if not photos:
+            return Response({'error': 'Aucune photo fournie'}, status=400)
+        
+        created_photos = []
         for i, photo in enumerate(photos):
-            Photo.objects.create(
+            photo_type = photo_types[i] if i < len(photo_types) else 'facade'
+            photo_obj = Photo.objects.create(
                 point_of_sale=point_of_sale,
                 image=photo,
-                type=request.data.get(f'type_{i}', 'facade'),
-                order=i
+                type=photo_type,
+                order=point_of_sale.photos.count() + i
             )
+            created_photos.append(photo_obj)
         
         point_of_sale.photos_count = point_of_sale.photos.count()
         point_of_sale.save()
         
-        return Response({'message': f'{len(photos)} photos uploadées'})
-    # Ajoutez ces méthodes dans votre classe PointOfSaleViewSet
-
+        serializer = PhotoSerializer(created_photos, many=True)
+        return Response({
+            'message': f'{len(photos)} photos uploadées avec succès',
+            'photos': serializer.data
+        }, status=201)
+    
+    @action(detail=True, methods=['delete'])
+    def delete_photo(self, request, pk=None):
+        """Supprimer une photo d'un PDV"""
+        point_of_sale = self.get_object()
+        photo_id = request.query_params.get('photo_id')
+        
+        if not photo_id:
+            return Response({'error': 'photo_id requis'}, status=400)
+        
+        try:
+            photo = point_of_sale.photos.get(id=photo_id)
+            photo.delete()
+            point_of_sale.photos_count = point_of_sale.photos.count()
+            point_of_sale.save()
+            return Response({'message': 'Photo supprimée avec succès'})
+        except Photo.DoesNotExist:
+            return Response({'error': 'Photo non trouvée'}, status=404)
+    
+    # ==================== ACTIONS POUR LES AGENTS ET FILTRES ====================
+    
     @action(detail=False, methods=['get'])
     def agents_performance(self, request):
         """Performance des agents collecteurs"""
@@ -312,8 +351,7 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
         
         data.sort(key=lambda x: x['total'], reverse=True)
         return Response(data)
-
-
+    
     @action(detail=False, methods=['get'])
     def filter_options(self, request):
         """Options pour les filtres"""
@@ -411,7 +449,6 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
     
     def _manual_avg(self, queryset, field):
-        """Calcule la moyenne manuellement pour SQLite"""
         values = list(queryset.values_list(field, flat=True))
         if values:
             return round(sum(values) / len(values))
@@ -474,7 +511,6 @@ class StatsByCommuneView(APIView):
     permission_classes = [IsAuthenticated]
     
     def _manual_avg(self, queryset, field):
-        """Calcule la moyenne manuellement pour SQLite"""
         values = list(queryset.values_list(field, flat=True))
         if values:
             return round(sum(values) / len(values))
@@ -483,7 +519,6 @@ class StatsByCommuneView(APIView):
     def get(self, request):
         queryset = self.get_queryset(request)
         
-        # Récupérer toutes les communes distinctes
         communes = queryset.values_list('commune', flat=True).distinct()
         
         result = []
@@ -584,7 +619,6 @@ class RadarDataView(APIView):
     permission_classes = [IsAuthenticated]
     
     def _manual_avg(self, queryset, field):
-        """Calcule la moyenne manuellement pour SQLite"""
         values = list(queryset.values_list(field, flat=True))
         if values:
             return round(sum(values) / len(values))
