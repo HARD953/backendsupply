@@ -211,27 +211,30 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def daily_trend(self, request):
         """Tendance journalière de collecte"""
+        from django.db.models.functions import TruncDate
+        from django.db import connection
+        
         queryset = self.get_queryset()
         
         # Derniers 30 jours
         thirty_days_ago = datetime.now().date() - timedelta(days=30)
         
-        # Pour SQLite, on utilise TruncDate
+        # Solution pour SQLite - utiliser extra() ou filtrer en Python
         trends = queryset.filter(
             date_collecte__gte=thirty_days_ago
-        ).annotate(
-            date=TruncDate('date_collecte')
-        ).values('date').annotate(
-            total=Count('id')
-        ).order_by('date')
+        )
         
-        # Formater les résultats
-        result = []
-        for trend in trends:
-            result.append({
-                'date': trend['date'].strftime('%d/%m') if trend['date'] else '',
-                'total': trend['total']
-            })
+        # Compter manuellement par date
+        date_counts = {}
+        for pdv in trends:
+            date_str = pdv.date_collecte.strftime('%d/%m')
+            date_counts[date_str] = date_counts.get(date_str, 0) + 1
+        
+        # Convertir en liste triée
+        result = [
+            {'date': date, 'total': count}
+            for date, count in sorted(date_counts.items())
+        ]
         
         return Response(result)
     
@@ -281,6 +284,62 @@ class PointOfSaleViewSet(viewsets.ModelViewSet):
         point_of_sale.save()
         
         return Response({'message': f'{len(photos)} photos uploadées'})
+    # Ajoutez ces méthodes dans votre classe PointOfSaleViewSet
+
+    @action(detail=False, methods=['get'])
+    def agents_performance(self, request):
+        """Performance des agents collecteurs"""
+        agents = Agent.objects.filter(is_active=True)
+        
+        data = []
+        for agent in agents:
+            pdvs = agent.points_of_sale.all()
+            total = pdvs.count()
+            
+            if total > 0:
+                gps_valid = pdvs.filter(gps_valid=True).count()
+                complete = pdvs.filter(fiche_complete=True).count()
+                total_photos = sum(p.photos_count for p in pdvs)
+                
+                data.append({
+                    'agent': agent.code,
+                    'agent_name': agent.name,
+                    'total': total,
+                    'gps_rate': round((gps_valid / total) * 100),
+                    'complete_rate': round((complete / total) * 100),
+                    'photo_avg': round(total_photos / total, 1),
+                })
+        
+        data.sort(key=lambda x: x['total'], reverse=True)
+        return Response(data)
+
+
+    @action(detail=False, methods=['get'])
+    def filter_options(self, request):
+        """Options pour les filtres"""
+        communes = PointOfSale.objects.values_list('commune', flat=True).distinct().order_by('commune')
+        
+        types = [
+            {'value': 'boutique', 'label': 'Boutique'},
+            {'value': 'supermarche', 'label': 'Supermarché'},
+            {'value': 'superette', 'label': 'Supérette'},
+            {'value': 'epicerie', 'label': 'Épicerie'},
+            {'value': 'demi_grossiste', 'label': 'Demi-Grossiste'},
+            {'value': 'grossiste', 'label': 'Grossiste'},
+        ]
+        
+        potentiels = [
+            {'value': 'standard', 'label': 'Standard'},
+            {'value': 'developpement', 'label': 'Développement'},
+            {'value': 'fort', 'label': 'Fort potentiel'},
+            {'value': 'premium', 'label': 'Premium'},
+        ]
+        
+        return Response({
+            'communes': list(communes),
+            'types': types,
+            'potentiels': potentiels,
+        })
 
 
 class AgentViewSet(viewsets.ReadOnlyModelViewSet):
