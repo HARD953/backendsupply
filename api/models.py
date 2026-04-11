@@ -38,33 +38,13 @@ class Supplier(models.Model):
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
 
-# models.py
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
-import uuid
-
-class Agent(models.Model):
-    """Modèle pour les agents collecteurs"""
-    code = models.CharField(max_length=20, unique=True)
-    name = models.CharField(max_length=200)
-    email = models.EmailField(blank=True, null=True)
-    phone = models.CharField(max_length=20, blank=True, null=True)
-    avatar = models.ImageField(upload_to='agents/', blank=True, null=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.code} - {self.name}"
-
-    class Meta:
-        ordering = ['code']
 
 
 class PointOfSale(models.Model):
-    """Modèle principal pour les points de vente enrichi"""
-    
+
     TYPE_CHOICES = [
         ('boutique', 'Boutique'),
         ('supermarche', 'Supermarché'),
@@ -80,268 +60,182 @@ class PointOfSale(models.Model):
         ('en_attente', 'En attente'),
     ]
 
+    # FIX 1 : ordre logique métier standard → developpement → fort_potentiel → premium
+    # Le front attend : "Standard", "Développement", "Fort potentiel", "Premium"
     POTENTIEL_CHOICES = [
-        ('premium', 'Premium stratégique'),
-        ('fort', 'Fort potentiel'),
+        ('standard',      'Standard'),
         ('developpement', 'Développement'),
-        ('standard', 'Standard'),
+        ('fort_potentiel','Fort potentiel'),
+        ('premium',       'Premium'),
     ]
 
-    # Identifiants
-    id = models.AutoField(primary_key=True)
-    #uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    
-    # Utilisateur et agent
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='points_of_sale', null=True, blank=True)
-    agent = models.ForeignKey(Agent, on_delete=models.SET_NULL, null=True, blank=True, related_name='points_of_sale')
-    
-    # Informations de base
-    name = models.CharField(max_length=200)
-    owner = models.CharField(max_length=200)
-    phone = models.CharField(max_length=20, blank=True, null=True)
-    email = models.EmailField(blank=True, null=True)
+    # ── Relation utilisateur ──────────────────────────────────────────────────
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='points_of_sale')
+
+    # ── Infos de base ─────────────────────────────────────────────────────────
+    avatar  = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    name    = models.CharField(max_length=200)
+    owner   = models.CharField(max_length=200)
+    phone   = models.CharField(max_length=20, blank=True, null=True)
+    email   = models.EmailField(blank=True, null=True)
     address = models.TextField()
-    latitude = models.FloatField(blank=True, null=True)
+
+    # ── Localisation ──────────────────────────────────────────────────────────
+    latitude  = models.FloatField(blank=True, null=True)
     longitude = models.FloatField(blank=True, null=True)
-    
-    # Localisation détaillée
-    district = models.CharField(max_length=100)
-    region = models.CharField(max_length=100)
-    commune = models.CharField(max_length=100)
-    quartier = models.CharField(max_length=100, blank=True, null=True)
-    grande_voie = models.BooleanField(default=False, verbose_name="Situé sur une grande voie")
-    
-    # Typologie et statut
-    type = models.CharField(max_length=50, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='en_attente')
-    potentiel = models.CharField(max_length=20, choices=POTENTIEL_CHOICES, blank=True, null=True)
-    
-    # Métriques terrain (0-100)
-    visibilite = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    accessibilite = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    affluence = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    digitalisation = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    
-    # Scores d'évaluation (A/D/E)
-    score_a = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(25)], verbose_name="Score A - Branding")
-    score_d = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(40)], verbose_name="Score D - Commercial")
-    score_e = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(35)], verbose_name="Score E - Environnement")
-    score_global = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
-    
-    # Branding
-    brander = models.BooleanField(default=False, verbose_name="Est brandé")
-    branding_image = models.ImageField(upload_to='branding/', blank=True, null=True)
-    marque_brander = models.CharField(max_length=200, blank=True, null=True, verbose_name="Marque du brander")
-    
-    # Données commerciales
-    monthly_orders = models.PositiveIntegerField(default=0, verbose_name="Commandes mensuelles")
-    monthly_turnover = models.DecimalField(max_digits=15, decimal_places=2, default=0.00, verbose_name="CA mensuel (CFA)")
+    district  = models.CharField(max_length=100)
+    region    = models.CharField(max_length=100)
+    commune   = models.CharField(max_length=100)
+    quartier  = models.CharField(max_length=100, blank=True, default='')
+
+    # ── Catégorisation ────────────────────────────────────────────────────────
+    type      = models.CharField(max_length=50, choices=TYPE_CHOICES)
+    status    = models.CharField(max_length=20, choices=STATUS_CHOICES, default='en_attente')
+    potentiel = models.CharField(max_length=30, choices=POTENTIEL_CHOICES, default='standard')
+
+    # ── Commerce ──────────────────────────────────────────────────────────────
     registration_date = models.DateField()
-    date_collecte = models.DateField(auto_now_add=True)
-    
-    # Qualité des données
-    gps_valid = models.BooleanField(default=False, verbose_name="GPS valide")
-    fiche_complete = models.BooleanField(default=False, verbose_name="Fiche complète")
-    photos_count = models.PositiveIntegerField(default=0)
-    
-    # Timestamps
+    turnover          = models.DecimalField(max_digits=15, decimal_places=2, default=0.00,
+                                            verbose_name="CA annuel")
+    # FIX 4 : monthly_turnover = caMensuel côté front
+    monthly_turnover  = models.DecimalField(max_digits=15, decimal_places=2, default=0.00,
+                                            verbose_name="CA mensuel")
+    monthly_orders    = models.PositiveIntegerField(default=0)
+    evaluation_score  = models.FloatField(default=0.0)
+
+    # ── Branding ──────────────────────────────────────────────────────────────
+    brander        = models.BooleanField(default=False, verbose_name="Est brandé")
+    branding_image = models.ImageField(upload_to='branding/', blank=True, null=True)
+    marque_brander = models.CharField(max_length=200, blank=True, null=True)
+
+    # ── Indicateurs analytiques (0-100) ──────────────────────────────────────
+    visibilite     = models.PositiveIntegerField(
+        default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    accessibilite  = models.PositiveIntegerField(
+        default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    affluence      = models.PositiveIntegerField(
+        default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    digitalisation = models.PositiveIntegerField(
+        default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+
+    # ── Scores calculés A / D / E ────────────────────────────────────────────
+    score_a      = models.PositiveIntegerField(default=0, verbose_name="Score A – Branding & média (max 25)")
+    score_d      = models.PositiveIntegerField(default=0, verbose_name="Score D – Potentiel commercial (max 40)")
+    score_e      = models.PositiveIntegerField(default=0, verbose_name="Score E – Environnement (max 35)")
+    score_global = models.PositiveIntegerField(default=0, verbose_name="Score global (max 100)")
+
+    # ── Éligibilités commerciales ─────────────────────────────────────────────
+    eligibilite_branding    = models.BooleanField(default=False)
+    eligibilite_exclusivite = models.BooleanField(default=False)
+    eligibilite_activation  = models.BooleanField(default=False)
+
+    # ── Qualité de collecte ───────────────────────────────────────────────────
+    gps_valid      = models.BooleanField(default=False)
+    fiche_complete = models.BooleanField(default=False)
+    grande_voie    = models.BooleanField(default=False)
+
+    # ── Agent collecteur ──────────────────────────────────────────────────────
+    # FIX 2 : un seul champ agent_name — le serializer l'expose
+    #         aussi sous la clé "agent" pour le front
+    agent_name    = models.CharField(max_length=200, blank=True, null=True)
+    date_collecte = models.DateField(blank=True, null=True)
+
+    # ── Timestamps ────────────────────────────────────────────────────────────
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Point de vente"
-        verbose_name_plural = "Points de vente"
-        indexes = [
-            models.Index(fields=['commune']),
-            models.Index(fields=['agent']),
-            models.Index(fields=['score_global']),
-            models.Index(fields=['brander']),
-            models.Index(fields=['potentiel']),
-            models.Index(fields=['type']),
-        ]
+        verbose_name          = "Point de vente"
+        verbose_name_plural   = "Points de vente"
+        ordering              = ['-created_at']
 
     def __str__(self):
-        return f"{self.name} - {self.commune}"
+        return f"{self.name} ({self.commune})"
+
+    # ── Calcul automatique des scores à chaque save() ────────────────────────
+    def compute_scores(self):
+        """
+        Calcule score_a, score_d, score_e, score_global
+        et les flags éligibilités + gps_valid + fiche_complete.
+        Appelé dans save().
+        """
+
+        # ── Score A : Branding & disponibilité média (max 25) ────────────────
+        a = 0
+        if self.brander:
+            a += 15
+        if self.visibilite >= 70:
+            a += 10
+        elif self.visibilite >= 40:
+            a += 5
+        self.score_a = min(a, 25)
+
+        # ── Score D : Potentiel commercial (max 40) ───────────────────────────
+        d = {'premium': 40, 'fort_potentiel': 30, 'developpement': 20, 'standard': 10}.get(self.potentiel, 10)
+        if self.grande_voie:
+            d = min(d + 5, 40)
+        self.score_d = min(d, 40)
+
+        # ── Score E : Environnement stratégique (max 35) ──────────────────────
+        e  = round(self.accessibilite  * 0.15)
+        e += round(self.affluence      * 0.12)
+        e += round(self.digitalisation * 0.08)
+        self.score_e = min(e, 35)
+
+        # ── Score global ──────────────────────────────────────────────────────
+        self.score_global = self.score_a + self.score_d + self.score_e
+
+        # ── Éligibilités ──────────────────────────────────────────────────────
+        # eligibilite_branding : PDV non brandé avec un score suffisant
+        self.eligibilite_branding    = (self.score_global >= 50) and (not self.brander)
+        self.eligibilite_exclusivite = self.score_global >= 70
+        self.eligibilite_activation  = self.score_global >= 60
+
+        # ── GPS valide (coordonnées cohérentes Côte d'Ivoire) ─────────────────
+        self.gps_valid = (
+            self.latitude  is not None and
+            self.longitude is not None and
+            4.0  <= self.latitude  <= 10.5 and
+            -8.5 <= self.longitude <= -3.0
+        )
+
+        # ── Fiche complète ────────────────────────────────────────────────────
+        self.fiche_complete = bool(
+            self.name and self.owner and self.address and
+            self.commune and self.district and self.region and
+            self.phone and self.gps_valid
+        )
 
     def save(self, *args, **kwargs):
-        # Calcul automatique des scores
-        self.score_a = self._calculate_score_a()
-        self.score_d = self._calculate_score_d()
-        self.score_e = self._calculate_score_e()
-        self.score_global = self.score_a + self.score_d + self.score_e
-        self.potentiel = self._calculate_potentiel()
-        self.fiche_complete = self._check_fiche_complete()
+        self.compute_scores()
         super().save(*args, **kwargs)
 
-    def _calculate_score_a(self):
-        """Score A - Branding & disponibilité média (max 25)"""
-        base = 10 if self.brander else 14
-        visibilite_bonus = int(self.visibilite * 0.09)
-        grande_voie_bonus = 3 if self.grande_voie else 0
-        return min(25, base + visibilite_bonus + grande_voie_bonus)
 
-    def _calculate_score_d(self):
-        """Score D - Potentiel commercial (max 40)"""
-        affluence_score = int(self.affluence * 0.25)
-        accessibilite_score = int(self.accessibilite * 0.1)
-        type_bonus = 6 if self.type in ['demi_grossiste', 'grossiste'] else 0
-        return min(40, affluence_score + accessibilite_score + type_bonus)
+class PointOfSalePhoto(models.Model):
 
-    def _calculate_score_e(self):
-        """Score E - Environnement stratégique (max 35)"""
-        visibilite_score = int(self.visibilite * 0.2)
-        accessibilite_score = int(self.accessibilite * 0.18)
-        grande_voie_bonus = 4 if self.grande_voie else 0
-        marche_bonus = 3  # À ajuster selon la proximité d'un marché
-        return min(35, visibilite_score + accessibilite_score + grande_voie_bonus + marche_bonus)
-
-    def _calculate_potentiel(self):
-        """Calcul du label de potentiel basé sur le score global"""
-        if self.score_global >= 85:
-            return 'premium'
-        elif self.score_global >= 70:
-            return 'fort'
-        elif self.score_global >= 50:
-            return 'developpement'
-        return 'standard'
-
-    def _check_fiche_complete(self):
-        """Vérifie si la fiche est complète"""
-        return all([
-            self.name,
-            self.address,
-            self.latitude is not None,
-            self.longitude is not None,
-            self.phone,
-            self.photos_count >= 4,
-        ])
-
-    @property
-    def eligibilite_branding(self):
-        """Éligibilité pour une offre de branding"""
-        return (not self.brander and 
-                self.score_global >= 70 and 
-                self.visibilite >= 70 and 
-                self.accessibilite >= 65)
-
-    @property
-    def eligibilite_exclusivite(self):
-        """Éligibilité pour une exclusivité"""
-        return self.score_global >= 78 and self.affluence >= 72
-
-    @property
-    def eligibilite_activation(self):
-        """Éligibilité pour une activation promotionnelle"""
-        return self.visibilite >= 68 and self.affluence >= 60
-
-
-class Photo(models.Model):
-    """Galerie de photos du point de vente"""
-    
-    PHOTO_TYPES = [
-        ('facade', 'Façade'),
-        ('interior', 'Intérieur'),
-        ('main_road', 'Axe principal'),
-        ('environment', 'Environnement'),
+    PHOTO_TYPE_CHOICES = [
+        ('facade',        'Façade'),
+        ('interieur',     'Intérieur'),
+        ('axe_principal', 'Axe principal'),
+        ('environnement', 'Environnement'),
+        ('autre',         'Autre'),
     ]
-    
+
     point_of_sale = models.ForeignKey(PointOfSale, on_delete=models.CASCADE, related_name='photos')
-    image = models.ImageField(upload_to='pdv_photos/')
-    thumbnail = models.ImageField(upload_to='pdv_photos/thumbnails/', blank=True, null=True)
-    type = models.CharField(max_length=20, choices=PHOTO_TYPES)
-    caption = models.CharField(max_length=200, blank=True)
-    order = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
+    image         = models.ImageField(upload_to='pos_photos/')
+    thumbnail     = models.ImageField(upload_to='pos_thumbnails/', blank=True, null=True)
+    type          = models.CharField(max_length=30, choices=PHOTO_TYPE_CHOICES, default='facade')
+    caption       = models.CharField(max_length=200, blank=True)
+    order         = models.PositiveIntegerField(default=0)
+    created_at    = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['order']
-        unique_together = ['point_of_sale', 'order']
+        ordering            = ['order', 'created_at']
+        verbose_name        = "Photo PDV"
+        verbose_name_plural = "Photos PDV"
 
     def __str__(self):
-        return f"Photo {self.type} - {self.point_of_sale.name}"
-
-
-class AgentPerformance(models.Model):
-    """Performance des agents collecteurs"""
-    
-    agent = models.OneToOneField(Agent, on_delete=models.CASCADE, related_name='performance')
-    
-    total_collecte = models.PositiveIntegerField(default=0)
-    gps_valid_count = models.PositiveIntegerField(default=0)
-    complete_count = models.PositiveIntegerField(default=0)
-    total_photos = models.PositiveIntegerField(default=0)
-    
-    gps_rate = models.FloatField(default=0.0)
-    complete_rate = models.FloatField(default=0.0)
-    photo_avg = models.FloatField(default=0.0)
-    
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def update_performance(self):
-        """Met à jour les indicateurs de performance"""
-        pdvs = self.agent.points_of_sale.all()
-        self.total_collecte = pdvs.count()
-        self.gps_valid_count = pdvs.filter(gps_valid=True).count()
-        self.complete_count = pdvs.filter(fiche_complete=True).count()
-        self.total_photos = sum(p.photos_count for p in pdvs)
-        
-        self.gps_rate = (self.gps_valid_count / self.total_collecte * 100) if self.total_collecte > 0 else 0
-        self.complete_rate = (self.complete_count / self.total_collecte * 100) if self.total_collecte > 0 else 0
-        self.photo_avg = (self.total_photos / self.total_collecte) if self.total_collecte > 0 else 0
-        
-        self.save()
-
-
-class EvaluationHistory(models.Model):
-    """Historique des évaluations pour tracking"""
-    
-    point_of_sale = models.ForeignKey(PointOfSale, on_delete=models.CASCADE, related_name='evaluations')
-    agent = models.ForeignKey(Agent, on_delete=models.SET_NULL, null=True)
-    
-    score_a = models.IntegerField()
-    score_d = models.IntegerField()
-    score_e = models.IntegerField()
-    score_global = models.IntegerField()
-    
-    visibilite = models.IntegerField()
-    accessibilite = models.IntegerField()
-    affluence = models.IntegerField()
-    digitalisation = models.IntegerField()
-    
-    periode = models.CharField(max_length=7)  # Format: YYYY-MM
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-
-class Activation(models.Model):
-    """Activations commerciales"""
-    
-    TYPE_CHOICES = [
-        ('branding', 'Branding'),
-        ('exclusivite', 'Exclusivité'),
-        ('activation_promo', 'Activation promo'),
-    ]
-    
-    STATUS_CHOICES = [
-        ('planifie', 'Planifié'),
-        ('en_cours', 'En cours'),
-        ('realise', 'Réalisé'),
-        ('annule', 'Annulé'),
-    ]
-    
-    point_of_sale = models.ForeignKey(PointOfSale, on_delete=models.CASCADE, related_name='activations')
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planifie')
-    
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField(blank=True, null=True)
-    montant = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
-    notes = models.TextField(blank=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+        return f"Photo {self.type} – {self.point_of_sale.name}"
 
 
 class Permission(models.Model):

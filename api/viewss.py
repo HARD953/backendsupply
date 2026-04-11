@@ -1,822 +1,304 @@
-# views.py corrigé et complet
+from django.db.models import Count, Avg, Q, OuterRef, Subquery
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
-from django.db.models import Count, Avg, Q, Sum, F, FloatField
-from django.db.models.functions import TruncDate, Cast
-from django.db import connection
-from .models import PointOfSale, Agent, Photo, AgentPerformance
+from rest_framework.response import Response
+
+from .models import PointOfSale, PointOfSalePhoto
 from .serializerss import (
-    PointOfSaleListSerializer, PointOfSaleDetailSerializer, 
-    PointOfSaleCreateSerializer, AgentSerializer, 
-    DashboardStatsSerializer, CommuneStatsSerializer, PhotoSerializer
+    PointOfSaleListSerializer,
+    PointOfSaleDetailSerializer,
+    PointOfSaleWriteSerializer,
+    PhotoSerializer,
 )
-from datetime import datetime, timedelta
-from collections import defaultdict
 
 
 class PointOfSaleViewSet(viewsets.ModelViewSet):
-    """ViewSet pour les points de vente"""
-    queryset = PointOfSale.objects.prefetch_related('photos').all()
     permission_classes = [IsAuthenticated]
-    
-    def get_serializer_class(self):
-        if self.action == 'list':
-            return PointOfSaleListSerializer
-        elif self.action == 'create':
-            return PointOfSaleCreateSerializer
-        return PointOfSaleDetailSerializer
-    
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Queryset de base
+    # FIX 3 : on annote photos_count_annotated pour éviter le N+1
+    # ─────────────────────────────────────────────────────────────────────
     def get_queryset(self):
-        queryset = super().get_queryset()
-        
-        # Filtres
-        commune = self.request.query_params.get('commune')
-        branding = self.request.query_params.get('branding')
-        potentiel = self.request.query_params.get('potentiel')
-        type_pdv = self.request.query_params.get('type')
-        agent_id = self.request.query_params.get('agent')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if branding and branding != 'Tous':
-            queryset = queryset.filter(brander=(branding == 'Brandé'))
-        if potentiel and potentiel != 'Tous':
-            queryset = queryset.filter(potentiel=potentiel)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        if agent_id:
-            queryset = queryset.filter(agent_id=agent_id)
-        
-        return queryset
-    
-    def retrieve(self, request, *args, **kwargs):
-        """Récupère un point de vente avec ses photos"""
-        instance = self.get_object()
-        serializer = PointOfSaleDetailSerializer(instance)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """Statistiques globales"""
-        queryset = self.get_queryset()
-        total = queryset.count()
-        
-        brandes = queryset.filter(brander=True).count()
-        non_brandes = total - brandes
-        premium = queryset.filter(score_global__gte=85).count()
-        
-        # Éligibles branding (non brandés avec bons scores)
-        eligibles_branding = queryset.filter(
-            brander=False,
-            score_global__gte=70,
-            visibilite__gte=70,
-            accessibilite__gte=65
-        ).count()
-        
-        gps_valides = queryset.filter(gps_valid=True).count()
-        
-        # Calcul des moyennes avec gestion SQLite
-        score_moyen = self._safe_avg(queryset, 'score_global')
-        score_a_moyen = self._safe_avg(queryset, 'score_a')
-        score_d_moyen = self._safe_avg(queryset, 'score_d')
-        score_e_moyen = self._safe_avg(queryset, 'score_e')
-        
-        stats = {
-            'total': total,
-            'brandes': brandes,
-            'non_brandes': non_brandes,
-            'premium': premium,
-            'eligibles_branding': eligibles_branding,
-            'gps_valides': gps_valides,
-            'score_moyen': score_moyen,
-            'score_a_moyen': score_a_moyen,
-            'score_d_moyen': score_d_moyen,
-            'score_e_moyen': score_e_moyen,
-        }
-        
-        serializer = DashboardStatsSerializer(stats)
-        return Response(serializer.data)
-    
-    def _safe_avg(self, queryset, field):
-        """Calcule la moyenne de manière sécurisée pour SQLite"""
-        try:
-            result = queryset.aggregate(avg=Avg(field))['avg']
-            return round(result) if result else 0
-        except Exception:
-            values = list(queryset.values_list(field, flat=True))
-            if values:
-                return round(sum(values) / len(values))
-            return 0
-    
-    @action(detail=False, methods=['get'])
-    def stats_by_commune(self, request):
-        """Statistiques groupées par commune"""
-        queryset = self.get_queryset()
-        
-        communes = queryset.values_list('commune', flat=True).distinct()
-        
-        result = []
-        for commune in communes:
-            commune_queryset = queryset.filter(commune=commune)
-            total = commune_queryset.count()
-            
-            if total == 0:
-                continue
-            
-            brandes = commune_queryset.filter(brander=True).count()
-            non_brandes = total - brandes
-            premium = commune_queryset.filter(score_global__gte=85).count()
-            
-            score_moyen = self._manual_avg(commune_queryset, 'score_global')
-            visibilite_moyen = self._manual_avg(commune_queryset, 'visibilite')
-            accessibilite_moyen = self._manual_avg(commune_queryset, 'accessibilite')
-            affluence_moyen = self._manual_avg(commune_queryset, 'affluence')
-            digitalisation_moyen = self._manual_avg(commune_queryset, 'digitalisation')
-            
-            eligibles_branding = commune_queryset.filter(
-                brander=False, score_global__gte=70,
-                visibilite__gte=70, accessibilite__gte=65
-            ).count()
-            
-            result.append({
-                'commune': commune,
-                'total': total,
-                'brandes': brandes,
-                'non_brandes': non_brandes,
-                'premium': premium,
-                'score_moyen': score_moyen,
-                'visibilite': visibilite_moyen,
-                'accessibilite': accessibilite_moyen,
-                'affluence': affluence_moyen,
-                'digitalisation': digitalisation_moyen,
-                'eligibles_branding': eligibles_branding,
-            })
-        
-        serializer = CommuneStatsSerializer(result, many=True)
-        return Response(serializer.data)
-    
-    def _manual_avg(self, queryset, field):
-        """Calcule la moyenne manuellement pour SQLite"""
-        values = list(queryset.values_list(field, flat=True))
-        if values:
-            return round(sum(values) / len(values))
-        return 0
-    
-    @action(detail=False, methods=['get'])
-    def branding_vs_potential(self, request):
-        """Brandés vs non brandés par niveau de potentiel"""
-        queryset = self.get_queryset()
-        
-        levels = ['standard', 'developpement', 'fort', 'premium']
-        level_labels = {
-            'standard': 'Standard',
-            'developpement': 'Développement',
-            'fort': 'Fort potentiel',
-            'premium': 'Premium'
-        }
-        
-        result = []
-        for level in levels:
-            data = {
-                'niveau': level_labels.get(level, level),
-                'brande': queryset.filter(potentiel=level, brander=True).count(),
-                'non_brande': queryset.filter(potentiel=level, brander=False).count()
-            }
-            result.append(data)
-        
-        return Response(result)
-    
-    @action(detail=False, methods=['get'])
-    def radar_data(self, request):
-        """Données pour le graphique radar"""
-        queryset = self.get_queryset()
-        commune = request.query_params.get('commune')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        
-        if not queryset.exists():
-            return Response([])
-        
-        data = [
-            {'axe': 'Visibilité', 'valeur': self._manual_avg(queryset, 'visibilite')},
-            {'axe': 'Accessibilité', 'valeur': self._manual_avg(queryset, 'accessibilite')},
-            {'axe': 'Affluence', 'valeur': self._manual_avg(queryset, 'affluence')},
-            {'axe': 'Digitalisation', 'valeur': self._manual_avg(queryset, 'digitalisation')},
-            {'axe': 'Score global', 'valeur': self._manual_avg(queryset, 'score_global')},
-        ]
-        
-        return Response(data)
-    
-    @action(detail=False, methods=['get'])
-    def daily_trend(self, request):
-        """Tendance journalière de collecte"""
-        queryset = self.get_queryset()
-        
-        thirty_days_ago = datetime.now().date() - timedelta(days=30)
-        
-        trends = queryset.filter(date_collecte__gte=thirty_days_ago)
-        
-        # Compter manuellement par date (compatible SQLite)
-        date_counts = defaultdict(int)
-        for pdv in trends:
-            date_str = pdv.date_collecte.strftime('%d/%m')
-            date_counts[date_str] += 1
-        
-        def parse_date(date_str):
-            day, month = date_str.split('/')
-            return datetime(datetime.now().year, int(month), int(day))
-        
-        result = [
-            {'date': date, 'total': count}
-            for date, count in sorted(date_counts.items(), key=lambda x: parse_date(x[0]))
-        ]
-        
-        return Response(result)
-    
-    @action(detail=False, methods=['get'])
-    def scatter_matrix(self, request):
-        """Données pour la matrice visibilité vs score"""
-        queryset = self.get_queryset()[:400]
-        
-        data = [
-            {
-                'x': p.visibilite,
-                'y': p.score_global,
-                'z': p.accessibilite,
-                'name': p.name
-            }
-            for p in queryset
-        ]
-        
-        return Response(data)
-    
-    @action(detail=False, methods=['get'])
-    def opportunities(self, request):
-        """Top opportunités branding"""
-        queryset = self.get_queryset().filter(
-            brander=False,
-            score_global__gte=70
-        ).order_by('-score_global')[:10]
-        
-        serializer = PointOfSaleListSerializer(queryset, many=True)
-        return Response(serializer.data)
-    
-    # ==================== ACTIONS POUR LES PHOTOS ====================
-    
-    @action(detail=True, methods=['get'])
-    def photos(self, request, pk=None):
-        """Récupère toutes les photos d'un point de vente"""
-        point_of_sale = self.get_object()
-        photos = point_of_sale.photos.all().order_by('order')
-        serializer = PhotoSerializer(photos, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def upload_photos(self, request, pk=None):
-        """Upload de photos pour un PDV"""
-        point_of_sale = self.get_object()
-        photos = request.FILES.getlist('photos')
-        photo_types = request.data.getlist('types', [])
-        
-        if not photos:
-            return Response({'error': 'Aucune photo fournie'}, status=400)
-        
-        created_photos = []
-        for i, photo in enumerate(photos):
-            photo_type = photo_types[i] if i < len(photo_types) else 'facade'
-            photo_obj = Photo.objects.create(
-                point_of_sale=point_of_sale,
-                image=photo,
-                type=photo_type,
-                order=point_of_sale.photos.count() + i
+        qs = (
+            PointOfSale.objects
+            .filter(user=self.request.user)
+            .prefetch_related('photos')
+            .annotate(photos_count_annotated=Count('photos', distinct=True))
+        )
+
+        # ── Filtres query string ──────────────────────────────────────────
+        params = self.request.query_params
+
+        commune  = params.get('commune')
+        district = params.get('district')
+        region   = params.get('region')
+        type_pdv = params.get('type')
+        status_  = params.get('status')
+        potentiel = params.get('potentiel')
+        # FIX : le front envoie branding="true"/"false"
+        branding  = params.get('branding')
+        marque    = params.get('marque_brander')
+        search    = params.get('search')
+
+        if commune:
+            qs = qs.filter(commune__iexact=commune)
+        if district:
+            qs = qs.filter(district__iexact=district)
+        if region:
+            qs = qs.filter(region__iexact=region)
+        if type_pdv:
+            qs = qs.filter(type=type_pdv)
+        if status_:
+            qs = qs.filter(status=status_)
+        if potentiel:
+            qs = qs.filter(potentiel=potentiel)
+        if branding is not None:
+            qs = qs.filter(brander=(branding.lower() == 'true'))
+        if marque:
+            qs = qs.filter(marque_brander__icontains=marque)
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(owner__icontains=search)
+                | Q(commune__icontains=search)
+                | Q(quartier__icontains=search)
+                | Q(address__icontains=search)
+                | Q(marque_brander__icontains=search)
             )
-            created_photos.append(photo_obj)
-        
-        point_of_sale.photos_count = point_of_sale.photos.count()
-        point_of_sale.save()
-        
-        serializer = PhotoSerializer(created_photos, many=True)
-        return Response({
-            'message': f'{len(photos)} photos uploadées avec succès',
-            'photos': serializer.data
-        }, status=201)
-    
-    @action(detail=True, methods=['delete'])
-    def delete_photo(self, request, pk=None):
-        """Supprimer une photo d'un PDV"""
-        point_of_sale = self.get_object()
-        photo_id = request.query_params.get('photo_id')
-        
-        if not photo_id:
-            return Response({'error': 'photo_id requis'}, status=400)
-        
-        try:
-            photo = point_of_sale.photos.get(id=photo_id)
-            photo.delete()
-            point_of_sale.photos_count = point_of_sale.photos.count()
-            point_of_sale.save()
-            return Response({'message': 'Photo supprimée avec succès'})
-        except Photo.DoesNotExist:
-            return Response({'error': 'Photo non trouvée'}, status=404)
-    
-    # ==================== ACTIONS POUR LES AGENTS ET FILTRES ====================
-    
-    @action(detail=False, methods=['get'])
-    def agents_performance(self, request):
-        """Performance des agents collecteurs"""
-        agents = Agent.objects.filter(is_active=True)
-        
-        data = []
-        for agent in agents:
-            pdvs = agent.points_of_sale.all()
-            total = pdvs.count()
-            
-            if total > 0:
-                gps_valid = pdvs.filter(gps_valid=True).count()
-                complete = pdvs.filter(fiche_complete=True).count()
-                total_photos = sum(p.photos_count for p in pdvs)
-                
-                data.append({
-                    'agent': agent.code,
-                    'agent_name': agent.name,
-                    'total': total,
-                    'gps_rate': round((gps_valid / total) * 100),
-                    'complete_rate': round((complete / total) * 100),
-                    'photo_avg': round(total_photos / total, 1),
-                })
-        
-        data.sort(key=lambda x: x['total'], reverse=True)
-        return Response(data)
-    
-    @action(detail=False, methods=['get'])
+
+        return qs
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Choix du serializer
+    # ─────────────────────────────────────────────────────────────────────
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return PointOfSaleWriteSerializer
+        if self.action == 'retrieve':
+            return PointOfSaleDetailSerializer
+        return PointOfSaleListSerializer
+
+    # ─────────────────────────────────────────────────────────────────────
+    # GET /api/points-vente/{id}/   — détail avec photos[]
+    # ─────────────────────────────────────────────────────────────────────
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = PointOfSaleDetailSerializer(instance, context={'request': request})
+        return Response(serializer.data)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # POST /api/points-vente/   — création → retourne le détail
+    # ─────────────────────────────────────────────────────────────────────
+    def create(self, request, *args, **kwargs):
+        write_ser = PointOfSaleWriteSerializer(data=request.data, context={'request': request})
+        write_ser.is_valid(raise_exception=True)
+        instance = write_ser.save()
+        read_ser = PointOfSaleDetailSerializer(instance, context={'request': request})
+        return Response(read_ser.data, status=status.HTTP_201_CREATED)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # PATCH /api/points-vente/{id}/   — mise à jour partielle → retourne le détail
+    # ─────────────────────────────────────────────────────────────────────
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write_ser = PointOfSaleWriteSerializer(
+            instance, data=request.data, partial=True, context={'request': request}
+        )
+        write_ser.is_valid(raise_exception=True)
+        updated = write_ser.save()
+        read_ser = PointOfSaleDetailSerializer(updated, context={'request': request})
+        return Response(read_ser.data)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # GET /api/points-vente/filter-options/
+    #
+    # Retourne les valeurs uniques pour peupler les <select> du dashboard.
+    #
+    # FIX : les potentiels sont triés dans l'ordre logique
+    #       standard → developpement → fort_potentiel → premium
+    #       et non par ordre alphabétique.
+    # ─────────────────────────────────────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='filter-options')
     def filter_options(self, request):
-        """Options pour les filtres"""
-        communes = PointOfSale.objects.values_list('commune', flat=True).distinct().order_by('commune')
-        
+        qs = PointOfSale.objects.filter(user=request.user)
+
+        # Valeurs simples
+        communes = sorted(
+            qs.exclude(commune='').values_list('commune', flat=True).distinct()
+        )
+        districts = sorted(
+            qs.exclude(district='').values_list('district', flat=True).distinct()
+        )
+        regions = sorted(
+            qs.exclude(region='').values_list('region', flat=True).distinct()
+        )
+        marques = sorted(
+            qs.filter(brander=True)
+              .exclude(marque_brander='')
+              .exclude(marque_brander__isnull=True)
+              .values_list('marque_brander', flat=True)
+              .distinct()
+        )
+
+        # Types : uniquement ceux présents dans la base, avec label lisible
+        type_map = dict(PointOfSale.TYPE_CHOICES)
+        types_in_db = qs.values_list('type', flat=True).distinct()
         types = [
-            {'value': 'boutique', 'label': 'Boutique'},
-            {'value': 'supermarche', 'label': 'Supermarché'},
-            {'value': 'superette', 'label': 'Supérette'},
-            {'value': 'epicerie', 'label': 'Épicerie'},
-            {'value': 'demi_grossiste', 'label': 'Demi-Grossiste'},
-            {'value': 'grossiste', 'label': 'Grossiste'},
+            {'value': t, 'label': type_map.get(t, t)}
+            for t in sorted(types_in_db) if t
         ]
-        
+
+        # FIX : potentiels dans l'ordre logique métier (pas alphabétique)
+        potentiel_order = ['standard', 'developpement', 'fort_potentiel', 'premium']
+        potentiel_map = dict(PointOfSale.POTENTIEL_CHOICES)
+        potentiels_in_db = set(qs.values_list('potentiel', flat=True).distinct())
         potentiels = [
-            {'value': 'standard', 'label': 'Standard'},
-            {'value': 'developpement', 'label': 'Développement'},
-            {'value': 'fort', 'label': 'Fort potentiel'},
-            {'value': 'premium', 'label': 'Premium'},
+            {'value': p, 'label': potentiel_map.get(p, p)}
+            for p in potentiel_order
+            if p in potentiels_in_db
         ]
-        
+
         return Response({
-            'communes': list(communes),
-            'types': types,
+            'communes':  list(communes),
+            'districts': list(districts),
+            'regions':   list(regions),
+            'marques':   list(marques),
+            'types':     types,
             'potentiels': potentiels,
         })
 
+    # ─────────────────────────────────────────────────────────────────────
+    # GET /api/points-vente/agents-performance/
+    #
+    # Stats par agent collecteur.
+    # photo_avg = nombre moyen de photos par PDV recensé par cet agent.
+    # ─────────────────────────────────────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='agents-performance')
+    def agents_performance(self, request):
+        qs = (
+            PointOfSale.objects
+            .filter(user=request.user)
+            .exclude(agent_name__isnull=True)
+            .exclude(agent_name='')
+            .values('agent_name')
+            .annotate(
+                total=Count('id'),
+                gps_ok=Count('id', filter=Q(gps_valid=True)),
+                fiche_ok=Count('id', filter=Q(fiche_complete=True)),
+                # Nombre total de photos pour tous les PDV de cet agent
+                photo_total=Count('photos', distinct=True),
+            )
+            .order_by('-total')
+        )
 
-class AgentViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet pour les agents (lecture seule)"""
-    queryset = Agent.objects.filter(is_active=True)
-    serializer_class = AgentSerializer
-    permission_classes = [IsAuthenticated]
-    
-    @action(detail=True, methods=['get'])
-    def performance(self, request, pk=None):
-        """Performance détaillée d'un agent"""
-        agent = self.get_object()
-        
-        if not hasattr(agent, 'performance'):
-            AgentPerformance.objects.create(agent=agent)
-        agent.performance.update_performance()
-        
-        pdvs = agent.points_of_sale.all()
-        
-        data = {
-            'agent': AgentSerializer(agent).data,
-            'points_of_sale': PointOfSaleListSerializer(pdvs, many=True).data,
-            'recent_activity': list(pdvs.order_by('-created_at')[:10].values('name', 'commune', 'created_at'))
-        }
-        
-        return Response(data)
-
-
-class FilterOptionsViewSet(viewsets.GenericViewSet):
-    """ViewSet pour les options de filtres"""
-    permission_classes = [IsAuthenticated]
-    
-    @action(detail=False, methods=['get'])
-    def communes(self, request):
-        """Liste des communes disponibles"""
-        communes = PointOfSale.objects.values_list('commune', flat=True).distinct()
-        return Response(list(communes))
-    
-    @action(detail=False, methods=['get'])
-    def types(self, request):
-        """Types de PDV disponibles"""
-        types = [{'value': choice[0], 'label': choice[1]} for choice in PointOfSale.TYPE_CHOICES]
-        return Response(types)
-    
-    @action(detail=False, methods=['get'])
-    def potentiels(self, request):
-        """Niveaux de potentiel disponibles"""
-        potentiels = [{'value': choice[0], 'label': choice[1]} for choice in PointOfSale.POTENTIEL_CHOICES]
-        return Response(potentiels)
-    
-    @action(detail=False, methods=['get'])
-    def quartiers(self, request):
-        """Quartiers par commune"""
-        commune = request.query_params.get('commune')
-        if commune:
-            quartiers = PointOfSale.objects.filter(
-                commune=commune, quartier__isnull=False
-            ).values_list('quartier', flat=True).distinct()
-        else:
-            quartiers = PointOfSale.objects.values_list('quartier', flat=True).distinct()
-        
-        return Response(list(quartiers))
-
-
-# ==================== VUES POUR LE DASHBOARD ====================
-
-class DashboardStatsView(APIView):
-    """Statistiques globales du dashboard"""
-    permission_classes = [IsAuthenticated]
-    
-    def _manual_avg(self, queryset, field):
-        values = list(queryset.values_list(field, flat=True))
-        if values:
-            return round(sum(values) / len(values))
-        return 0
-    
-    def get(self, request):
-        queryset = self.get_queryset(request)
-        
-        total = queryset.count()
-        brandes = queryset.filter(brander=True).count()
-        non_brandes = total - brandes
-        premium = queryset.filter(score_global__gte=85).count()
-        
-        eligibles_branding = queryset.filter(
-            brander=False,
-            score_global__gte=70,
-            visibilite__gte=70,
-            accessibilite__gte=65
-        ).count()
-        
-        gps_valides = queryset.filter(gps_valid=True).count()
-        
-        stats = {
-            'total': total,
-            'brandes': brandes,
-            'non_brandes': non_brandes,
-            'premium': premium,
-            'eligibles_branding': eligibles_branding,
-            'gps_valides': gps_valides,
-            'score_moyen': self._manual_avg(queryset, 'score_global'),
-            'score_a_moyen': self._manual_avg(queryset, 'score_a'),
-            'score_d_moyen': self._manual_avg(queryset, 'score_d'),
-            'score_e_moyen': self._manual_avg(queryset, 'score_e'),
-        }
-        
-        return Response(stats)
-    
-    def get_queryset(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        branding = request.query_params.get('branding')
-        potentiel = request.query_params.get('potentiel')
-        type_pdv = request.query_params.get('type')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if branding and branding != 'Tous':
-            queryset = queryset.filter(brander=(branding == 'Brandé'))
-        if potentiel and potentiel != 'Tous':
-            queryset = queryset.filter(potentiel=potentiel)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        
-        return queryset
-
-
-class StatsByCommuneView(APIView):
-    """Statistiques groupées par commune"""
-    permission_classes = [IsAuthenticated]
-    
-    def _manual_avg(self, queryset, field):
-        values = list(queryset.values_list(field, flat=True))
-        if values:
-            return round(sum(values) / len(values))
-        return 0
-    
-    def get(self, request):
-        queryset = self.get_queryset(request)
-        
-        communes = queryset.values_list('commune', flat=True).distinct()
-        
         result = []
-        for commune in communes:
-            commune_queryset = queryset.filter(commune=commune)
-            total = commune_queryset.count()
-            
-            if total == 0:
-                continue
-            
-            brandes = commune_queryset.filter(brander=True).count()
-            non_brandes = total - brandes
-            premium = commune_queryset.filter(score_global__gte=85).count()
-            
-            eligibles_branding = commune_queryset.filter(
-                brander=False, score_global__gte=70,
-                visibilite__gte=70, accessibilite__gte=65
-            ).count()
-            
+        for row in qs:
+            total = row['total']
             result.append({
-                'commune': commune,
-                'total': total,
-                'brandes': brandes,
-                'non_brandes': non_brandes,
-                'premium': premium,
-                'score_moyen': self._manual_avg(commune_queryset, 'score_global'),
-                'visibilite': self._manual_avg(commune_queryset, 'visibilite'),
-                'accessibilite': self._manual_avg(commune_queryset, 'accessibilite'),
-                'affluence': self._manual_avg(commune_queryset, 'affluence'),
-                'digitalisation': self._manual_avg(commune_queryset, 'digitalisation'),
-                'eligibles_branding': eligibles_branding,
+                # FIX : les deux clés "agent" et "agent_name" pointent sur la même valeur
+                # pour correspondre à la logique du front :
+                # agent: p.agent_name || p.agent || "Agent inconnu"
+                'agent':         row['agent_name'],
+                'agent_name':    row['agent_name'],
+                'total':         total,
+                'gps_rate':      round((row['gps_ok'] / total) * 100, 1) if total else 0,
+                'complete_rate': round((row['fiche_ok'] / total) * 100, 1) if total else 0,
+                'photo_avg':     round(row['photo_total'] / total, 1) if total else 0,
             })
-        
+
         return Response(result)
-    
-    def get_queryset(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        branding = request.query_params.get('branding')
-        potentiel = request.query_params.get('potentiel')
-        type_pdv = request.query_params.get('type')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if branding and branding != 'Tous':
-            queryset = queryset.filter(brander=(branding == 'Brandé'))
-        if potentiel and potentiel != 'Tous':
-            queryset = queryset.filter(potentiel=potentiel)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        
-        return queryset
 
+    # ─────────────────────────────────────────────────────────────────────
+    # POST /api/points-vente/{id}/photos/
+    # Champ attendu : "images" (fichier(s)), optionnel "type", "caption"
+    # ─────────────────────────────────────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='photos')
+    def add_photos(self, request, pk=None):
+        point = self.get_object()
+        files = request.FILES.getlist('images')
 
-class BrandingVsPotentialView(APIView):
-    """Brandés vs non brandés par niveau de potentiel"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        queryset = self.get_queryset(request)
-        
-        levels = ['standard', 'developpement', 'fort', 'premium']
-        level_labels = {
-            'standard': 'Standard',
-            'developpement': 'Développement',
-            'fort': 'Fort potentiel',
-            'premium': 'Premium'
+        if not files:
+            return Response(
+                {'detail': 'Aucune image. Utilisez le champ "images".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        photo_type = request.data.get('type', 'facade')
+        caption    = request.data.get('caption', '')
+        current_count = point.photos.count()
+
+        created = []
+        for i, file in enumerate(files):
+            photo = PointOfSalePhoto.objects.create(
+                point_of_sale=point,
+                image=file,
+                type=photo_type,
+                caption=caption,
+                order=current_count + i,
+            )
+            created.append(photo)
+
+        serializer = PhotoSerializer(created, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # DELETE /api/points-vente/{id}/photos/{photo_id}/
+    # ─────────────────────────────────────────────────────────────────────
+    @action(detail=True, methods=['delete'], url_path='photos/(?P<photo_id>[0-9]+)')
+    def delete_photo(self, request, pk=None, photo_id=None):
+        point = self.get_object()
+        try:
+            photo = point.photos.get(pk=photo_id)
+            if photo.image:
+                photo.image.delete(save=False)
+            if photo.thumbnail:
+                photo.thumbnail.delete(save=False)
+            photo.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except PointOfSalePhoto.DoesNotExist:
+            return Response({'detail': 'Photo introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # GET /api/points-vente/stats/
+    # KPIs globaux pour la vue "Direction" du dashboard
+    # ─────────────────────────────────────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        qs = PointOfSale.objects.filter(user=request.user)
+        total = qs.count()
+
+        empty = {
+            'total': 0, 'brandes': 0, 'non_brandes': 0, 'actifs': 0,
+            'premium': 0, 'eligibles_branding': 0, 'gps_valides': 0,
+            'score_moyen': 0, 'score_a_moyen': 0, 'score_d_moyen': 0, 'score_e_moyen': 0,
         }
-        
-        result = []
-        for level in levels:
-            data = {
-                'niveau': level_labels.get(level, level),
-                'brande': queryset.filter(potentiel=level, brander=True).count(),
-                'non_brande': queryset.filter(potentiel=level, brander=False).count()
-            }
-            result.append(data)
-        
-        return Response(result)
-    
-    def get_queryset(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        type_pdv = request.query_params.get('type')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        
-        return queryset
+        if total == 0:
+            return Response(empty)
 
+        agg = qs.aggregate(
+            brandes=Count('id', filter=Q(brander=True)),
+            actifs=Count('id', filter=Q(status='actif')),
+            premium=Count('id', filter=Q(score_global__gte=85)),
+            eligibles_branding=Count('id', filter=Q(eligibilite_branding=True)),
+            gps_valides=Count('id', filter=Q(gps_valid=True)),
+            score_moyen=Avg('score_global'),
+            score_a_moyen=Avg('score_a'),
+            score_d_moyen=Avg('score_d'),
+            score_e_moyen=Avg('score_e'),
+        )
 
-class RadarDataView(APIView):
-    """Données pour le graphique radar"""
-    permission_classes = [IsAuthenticated]
-    
-    def _manual_avg(self, queryset, field):
-        values = list(queryset.values_list(field, flat=True))
-        if values:
-            return round(sum(values) / len(values))
-        return 0
-    
-    def get(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        
-        if not queryset.exists():
-            return Response([])
-        
-        data = [
-            {'axe': 'Visibilité', 'valeur': self._manual_avg(queryset, 'visibilite')},
-            {'axe': 'Accessibilité', 'valeur': self._manual_avg(queryset, 'accessibilite')},
-            {'axe': 'Affluence', 'valeur': self._manual_avg(queryset, 'affluence')},
-            {'axe': 'Digitalisation', 'valeur': self._manual_avg(queryset, 'digitalisation')},
-            {'axe': 'Score global', 'valeur': self._manual_avg(queryset, 'score_global')},
-        ]
-        
-        return Response(data)
-
-
-class DailyTrendView(APIView):
-    """Tendance journalière de collecte"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        thirty_days_ago = datetime.now().date() - timedelta(days=30)
-        
-        trends = queryset.filter(
-            date_collecte__gte=thirty_days_ago
-        ).annotate(
-            date=TruncDate('date_collecte')
-        ).values('date').annotate(
-            total=Count('id')
-        ).order_by('date')
-        
-        result = []
-        for trend in trends:
-            result.append({
-                'date': trend['date'].strftime('%d/%m') if trend['date'] else '',
-                'total': trend['total']
-            })
-        
-        return Response(result)
-
-
-class ScatterMatrixView(APIView):
-    """Données pour la matrice visibilité vs score"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        queryset = self.get_queryset(request)[:400]
-        
-        data = [
-            {
-                'x': p.visibilite,
-                'y': p.score_global,
-                'z': p.accessibilite,
-                'name': p.name
-            }
-            for p in queryset
-        ]
-        
-        return Response(data)
-    
-    def get_queryset(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        branding = request.query_params.get('branding')
-        potentiel = request.query_params.get('potentiel')
-        type_pdv = request.query_params.get('type')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if branding and branding != 'Tous':
-            queryset = queryset.filter(brander=(branding == 'Brandé'))
-        if potentiel and potentiel != 'Tous':
-            queryset = queryset.filter(potentiel=potentiel)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        
-        return queryset
-
-
-class TopOpportunitiesView(APIView):
-    """Top opportunités branding"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        queryset = self.get_queryset(request).filter(
-            brander=False,
-            score_global__gte=70
-        ).order_by('-score_global')[:10]
-        
-        data = [
-            {
-                'id': p.id,
-                'name': p.name,
-                'commune': p.commune,
-                'quartier': p.quartier,
-                'type': p.type,
-                'brander': p.brander,
-                'potentiel': p.potentiel,
-                'score_global': p.score_global,
-                'visibilite': p.visibilite,
-                'accessibilite': p.accessibilite,
-                'affluence': p.affluence,
-                'photos_count': p.photos_count,
-                'eligibilite_branding': p.eligibilite_branding,
-                'latitude': p.latitude,
-                'longitude': p.longitude,
-                'score_a': p.score_a,
-                'score_d': p.score_d,
-                'score_e': p.score_e,
-            }
-            for p in queryset
-        ]
-        
-        return Response(data)
-    
-    def get_queryset(self, request):
-        queryset = PointOfSale.objects.all()
-        
-        commune = request.query_params.get('commune')
-        type_pdv = request.query_params.get('type')
-        
-        if commune and commune != 'Toutes':
-            queryset = queryset.filter(commune=commune)
-        if type_pdv and type_pdv != 'Tous':
-            queryset = queryset.filter(type=type_pdv)
-        
-        return queryset
-
-
-class AgentsPerformanceView(APIView):
-    """Performance des agents collecteurs"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        agents = Agent.objects.filter(is_active=True)
-        
-        data = []
-        for agent in agents:
-            pdvs = agent.points_of_sale.all()
-            total = pdvs.count()
-            
-            if total > 0:
-                gps_valid = pdvs.filter(gps_valid=True).count()
-                complete = pdvs.filter(fiche_complete=True).count()
-                total_photos = sum(p.photos_count for p in pdvs)
-                
-                data.append({
-                    'agent': agent.code,
-                    'agent_name': agent.name,
-                    'total': total,
-                    'gps_rate': round((gps_valid / total) * 100),
-                    'complete_rate': round((complete / total) * 100),
-                    'photo_avg': round(total_photos / total, 1),
-                })
-        
-        data.sort(key=lambda x: x['total'], reverse=True)
-        
-        return Response(data)
-
-
-class FilterOptionsView(APIView):
-    """Options pour les filtres"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        communes = PointOfSale.objects.values_list('commune', flat=True).distinct().order_by('commune')
-        
-        types = [
-            {'value': 'boutique', 'label': 'Boutique'},
-            {'value': 'supermarche', 'label': 'Supermarché'},
-            {'value': 'superette', 'label': 'Supérette'},
-            {'value': 'epicerie', 'label': 'Épicerie'},
-            {'value': 'demi_grossiste', 'label': 'Demi-Grossiste'},
-            {'value': 'grossiste', 'label': 'Grossiste'},
-        ]
-        
-        potentiels = [
-            {'value': 'standard', 'label': 'Standard'},
-            {'value': 'developpement', 'label': 'Développement'},
-            {'value': 'fort', 'label': 'Fort potentiel'},
-            {'value': 'premium', 'label': 'Premium'},
-        ]
-        
         return Response({
-            'communes': list(communes),
-            'types': types,
-            'potentiels': potentiels,
+            'total':              total,
+            'brandes':            agg['brandes'],
+            'non_brandes':        total - agg['brandes'],
+            'actifs':             agg['actifs'],
+            'premium':            agg['premium'],
+            'eligibles_branding': agg['eligibles_branding'],
+            'gps_valides':        agg['gps_valides'],
+            'score_moyen':        round(agg['score_moyen'] or 0, 1),
+            'score_a_moyen':      round(agg['score_a_moyen'] or 0, 1),
+            'score_d_moyen':      round(agg['score_d_moyen'] or 0, 1),
+            'score_e_moyen':      round(agg['score_e_moyen'] or 0, 1),
         })
